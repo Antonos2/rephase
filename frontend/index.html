@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mede — Precisione svizzera a 432 Hz</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #e8e8e8; color: #1a1a1a; }
+nav { background: #d0d0d0; border-bottom: 0.5px solid #b8b8b8; padding: 0 32px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+.logo { font-size: 20px; font-weight: 700; } .logo span { color: #1e8c3a; }
+.hero { text-align: center; padding: 64px 32px 48px; }
+.hero-tag { background: #d0d0d0; padding: 4px 12px; border-radius: 980px; display: inline-block; font-size: 12px; font-weight: 600; color: #1e8c3a; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
+.hero-title { font-size: 48px; font-weight: 700; letter-spacing: -2px; line-height: 1.05; margin-bottom: 16px; }
+.hero-sub { font-size: 17px; color: #333; margin-bottom: 16px; }
+.hero-slogan { font-size: 14px; color: #444; font-style: italic; margin-bottom: 0; }
+.main { max-width: 720px; margin: 0 auto; padding: 0 24px 64px; }
+.card { background: #d8d8d8; border-radius: 18px; border: 0.5px solid #c0c0c0; overflow: hidden; margin-bottom: 16px; }
+.tabs { display: flex; background: #ccc; }
+.tab { flex: 1; text-align: center; padding: 14px; font-size: 14px; font-weight: 500; color: #444; cursor: pointer; border-bottom: 2.5px solid transparent; }
+.tab.active { color: #1a1a1a; background: #d8d8d8; border-bottom: 2.5px solid #34c759; }
+.tab-content { display: none; padding: 24px; }
+.tab-content.active { display: block; }
+.drop-area { border: 1.5px dashed #aaa; border-radius: 12px; padding: 40px 24px; text-align: center; background: #e0e0e0; cursor: pointer; transition: all .2s; }
+.drop-area:hover { border-color: #1e8c3a; background: #d8eed8; }
+.drop-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.drop-sub { font-size: 13px; color: #444; }
+.drop-sub a { color: #1e8c3a; font-weight: 500; cursor: pointer; }
+input[type=file] { display: none; }
+.result-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 20px 0; }
+.metric { background: #c8c8c8; border-radius: 12px; padding: 14px 16px; }
+.metric.accent { border-left: 3px solid #34c759; border-radius: 0 12px 12px 0; }
+.metric-label { font-size: 10px; color: #444; font-weight: 600; margin-bottom: 6px; letter-spacing: 0.5px; text-transform: uppercase; }
+.metric-value { font-size: 22px; font-weight: 700; }
+.metric-value.green { color: #1e8c3a; }
+.metric-sub { font-size: 11px; color: #444; margin-top: 3px; }
+.verdict { border-radius: 0 12px 12px 0; padding: 16px 20px; display: flex; align-items: center; gap: 14px; background: #c8c8c8; border-left: 3px solid #34c759; margin-bottom: 20px; }
+.verdict.fail { border-left-color: #aaa; }
+.verdict-dot { width: 10px; height: 10px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
+.verdict-dot.gray { background: #888; }
+.verdict-text { font-size: 14px; font-weight: 500; }
+.verdict-sub { font-size: 12px; color: #333; margin-top: 2px; }
+.divider { height: 0.5px; background: #c0c0c0; margin: 20px 0; }
+.why { background: #c8c8c8; border-radius: 0 0 12px 12px; border-top: 2px solid #34c759; padding: 20px; }
+.why-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.why-text { font-size: 13px; color: #222; line-height: 1.6; }
+.why-slogan { font-size: 13px; color: #1e8c3a; font-style: italic; margin-top: 10px; font-weight: 600; }
+.status { font-size: 13px; color: #333; text-align: center; padding: 12px; display: none; }
+.status.visible { display: block; }
+.format-select { display: flex; gap: 8px; margin-bottom: 16px; }
+.format-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #bbb; background: #e0e0e0; font-size: 13px; font-weight: 500; color: #333; cursor: pointer; text-align: center; }
+.format-btn.active { background: #1a1a1a; color: #e8e8e8; border-color: #1a1a1a; }
+.btn-green { background: #34c759; color: #1a1a1a; border: none; border-radius: 980px; padding: 11px 28px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.plan { background: #d8d8d8; border-radius: 18px; border: 0.5px solid #c0c0c0; padding: 24px; }
+.plan.featured { border: 2px solid #34c759; }
+.plan-badge { font-size: 11px; font-weight: 600; background: #34c759; color: #1a1a1a; border-radius: 980px; padding: 3px 10px; display: inline-block; margin-bottom: 12px; }
+.plan-name { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.plan-price { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; }
+.plan-price span { font-size: 15px; font-weight: 400; color: #444; }
+.plan-desc { font-size: 13px; color: #444; margin-bottom: 16px; }
+.plan-features { list-style: none; }
+.plan-features li { font-size: 13px; color: #333; padding: 5px 0; display: flex; align-items: center; gap: 8px; }
+.plan-features li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
+footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; background: #d0d0d0; }
+.footer-logo { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.footer-logo span { color: #1e8c3a; }
+.footer-text { font-size: 12px; color: #444; line-height: 1.6; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body ondragover="event.preventDefault()" ondrop="event.preventDefault()">
+<nav>
+  <div class="logo">me<span>de</span></div>
+  <div style="display:flex;gap:24px;">
+    <a style="font-size:13px;color:#666;text-decoration:none;" href="#verifica">Verifica</a>
+    <a style="font-size:13px;color:#666;text-decoration:none;" href="#converti">Converti</a>
+    <a style="font-size:13px;color:#666;text-decoration:none;" href="#prezzi">Prezzi</a>
+  </div>
+</nav>
+<div class="hero">
+  <div class="hero-tag">Certificazione 432 Hz</div>
+  <div class="hero-title">Basta con<br>l'atto di fede</div>
+  <div class="hero-sub">Verifica e converti i tuoi brani a 432 Hz.<br>Con misura reale, non con promesse.</div>
+  <div class="hero-slogan">"Misura con Mede — la natura pensa al resto."</div>
+</div>
+<div class="main">
+  <div class="card" id="verifica">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('verify')">Verifica</div>
+      <div class="tab" onclick="switchTab('convert')" id="tab-convert-btn">Converti a 432 Hz</div>
+    </div>
+    <div class="tab-content active" id="tab-verify">
+      <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
+      <div class="drop-area" onclick="document.getElementById('file-verify').click()">
+        <div class="drop-title">Trascina il tuo file audio</div>
+        <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
+      </div>
+      <div class="status" id="status-verify">Analisi in corso...</div>
+      <div id="result-verify" class="hidden">
+        <div class="result-grid">
+          <div class="metric">
+            <div class="metric-label">Frequenza rilevata</div>
+            <div class="metric-value" id="rv-freq">—</div>
+            <div class="metric-sub" id="rv-sub">—</div>
+          </div>
+          <div class="metric accent">
+            <div class="metric-label">Frequenza target</div>
+            <div class="metric-value green">432.0 Hz</div>
+            <div class="metric-sub">frequenza naturale</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Scostamento</div>
+            <div class="metric-value" id="rv-cents">—</div>
+            <div class="metric-sub">cent</div>
+          </div>
+        </div>
+        <div class="verdict" id="rv-verdict">
+          <div class="verdict-dot" id="rv-dot"></div>
+          <div>
+            <div class="verdict-text" id="rv-text">—</div>
+            <div class="verdict-sub" id="rv-vsub">—</div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="why">
+          <div class="why-title">Perché 432 Hz?</div>
+          <div class="why-text">Il 440 Hz è uno standard industriale adottato nel 1953. Il 432 Hz vibra in armonia con le frequenze naturali della Terra. Chi ascolta musica a 432 Hz descrive un suono più caldo, rilassante e meno affaticante per il sistema nervoso.</div>
+          <div class="why-slogan">Tu rilassati ascoltando — la natura pensa al resto.</div>
+        </div>
+      </div>
+    </div>
+    <div class="tab-content" id="tab-convert">
+      <div class="format-select">
+        <div class="format-btn active" onclick="selectFormat('mp3',this)">MP3</div>
+        <div class="format-btn" onclick="selectFormat('m4a',this)">M4A</div>
+      </div>
+      <input type="file" id="file-convert" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
+      <div class="drop-area" onclick="document.getElementById('file-convert').click()">
+        <div class="drop-title" id="convert-label">Trascina il file da convertire</div>
+        <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
+      </div>
+      <div class="status" id="status-convert">Conversione in corso...</div>
+      <div id="result-convert" class="hidden" style="text-align:center;padding:20px 0;">
+        <div style="font-size:32px;font-weight:700;color:#34c759;margin-bottom:8px;">432.0 Hz ✓</div>
+        <div style="font-size:14px;color:#555;margin-bottom:20px;">Il tuo brano è stato convertito con precisione svizzera.</div>
+        <a id="download-link" href="#" download><button class="btn-green">Scarica il file convertito</button></a>
+        <div style="font-size:11px;color:#aaa;margin-top:12px;">File cancellato dai server entro 60 secondi.</div>
+      </div>
+    </div>
+  </div>
+  <div class="pricing" id="prezzi">
+    <div class="plan">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">€0 <span>/mese</span></div>
+      <div class="plan-desc">Per chi vuole provare</div>
+      <ul class="plan-features">
+        <li>5 verifiche al mese</li>
+        <li>2 conversioni al mese</li>
+        <li>MP3 in uscita</li>
+        <li>Report base</li>
+      </ul>
+    </div>
+    <div class="plan featured">
+      <div class="plan-badge">Più popolare</div>
+      <div class="plan-name">Pro</div>
+      <div class="plan-price">€4.99 <span>/mese</span></div>
+      <div class="plan-desc">Per gli appassionati</div>
+      <ul class="plan-features">
+        <li>Verifiche illimitate</li>
+        <li>Conversioni illimitate</li>
+        <li>MP3 + M4A in uscita</li>
+        <li>Report certificato PDF</li>
+        <li>Conversione batch</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<footer>
+  <div class="footer-logo">me<span>de</span></div>
+  <div class="footer-text">Misura con Mede — la natura pensa al resto.<br>Server in Svizzera. File cancellati entro 60 secondi.<br>© 2026 Mede. Tutti i diritti riservati.</div>
+</footer>
+<script>
+const API = "http://localhost:8000";
+let fmt = "mp3";
+function switchTab(t) {
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));
+  document.getElementById('tab-verify').classList.toggle('active',t==='verify');
+  document.getElementById('tab-convert').classList.toggle('active',t==='convert');
+}
+function selectFormat(f,el) {
+  fmt=f;
+  document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+document.getElementById('file-verify').addEventListener('change', async function() {
+  const file=this.files[0]; if(!file) return;
+  document.getElementById('result-verify').classList.add('hidden');
+  const st=document.getElementById('status-verify'); st.textContent='Analisi in corso...'; st.classList.add('visible');
+  const fd=new FormData(); fd.append('file',file);
+  try {
+    const res=await fetch(`${API}/verify`,{method:'POST',body:fd});
+    const d=await res.json(); st.classList.remove('visible');
+    document.getElementById('rv-freq').textContent=d.peak_freq.toFixed(1)+' Hz';
+    document.getElementById('rv-sub').textContent=d.verdict;
+    document.getElementById('rv-cents').textContent=(d.cents_vs_432>=0?'+':'')+d.cents_vs_432.toFixed(1);
+    document.getElementById('rv-text').textContent=d.message;
+    const ok=d.is_432;
+    document.getElementById('rv-verdict').className='verdict'+(ok?'':' fail');
+    document.getElementById('rv-dot').className='verdict-dot'+(ok?'':' gray');
+    document.getElementById('rv-vsub').textContent=ok?'Precisione svizzera certificata ✓':'Passa a "Converti a 432 Hz" per convertirlo';
+    document.getElementById('result-verify').classList.remove('hidden');
+  } catch(e) { st.textContent='Errore — il backend è in esecuzione?'; }
+});
+document.getElementById('file-convert').addEventListener('change', async function() {
+  const file=this.files[0]; if(!file) return;
+  document.getElementById('convert-label').textContent=file.name;
+  document.getElementById('result-convert').classList.add('hidden');
+  const st=document.getElementById('status-convert'); st.textContent='Conversione in corso...'; st.classList.add('visible');
+  const fd=new FormData(); fd.append('file',file);
+  try {
+    const res=await fetch(`${API}/convert?format=${fmt}`,{method:'POST',body:fd});
+    if(!res.ok){st.textContent='Errore nella conversione.';return;}
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const stem=file.name.replace(/\.[^.]+$/,'');
+    document.getElementById('download-link').href=url;
+    document.getElementById('download-link').download=`${stem}_432.${fmt}`;
+    st.classList.remove('visible');
+    document.getElementById('result-convert').classList.remove('hidden');
+  } catch(e) { st.textContent='Errore — il backend è in esecuzione?'; }
+});
+</script>
+</body>
+</html>
