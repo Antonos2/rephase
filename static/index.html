@@ -243,7 +243,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   <div class="footer-text">Out of phase? Get <span style="font-weight:700;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span><br>Server in Svizzera. File cancellati entro 60 secondi.<br>© 2026 Rephase. Tutti i diritti riservati.</div>
 </footer>
 <script>
-const API="http://localhost:8000";
+const API="https://rephase.app";
 let fmt="mp3",tubeTimer=null;
 const SVG_H=420;
 function switchTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');}
