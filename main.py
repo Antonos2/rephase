@@ -4,7 +4,7 @@ import aiofiles
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
 
 app = FastAPI(title="Rephase API", version="1.0.0")
@@ -54,12 +54,24 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
         content = await file.read()
         if len(content)>MAX_SIZE: raise HTTPException(413,"File troppo grande")
         await f.write(content)
+    analysis = analyze_file(tmp_in)
+    if analysis.get("is_432"):
+        background_tasks.add_task(cleanup, tmp_in)
+        return JSONResponse({"already_432": True, "peak_freq": analysis["peak_freq"], "cents_vs_432": analysis["cents_vs_432"], "message": "Il brano \u00e8 gi\u00e0 a 432 Hz \u2014 nessuna conversione necessaria."})
     result = convert_to_432(tmp_in, tmp_out)
     background_tasks.add_task(cleanup, tmp_in)
     if not result["success"]: raise HTTPException(500, result.get("error","Errore"))
     background_tasks.add_task(cleanup, tmp_out)
     stem = Path(file.filename).stem
-    return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4")
+    stats_headers = {
+        "X-Pre-Freq":    str(round(result.get("pre_freq", 0), 2)),
+        "X-Shift-Cents": str(round(result.get("shift_applied", 0), 2)),
+        "X-Post-Freq":   str(round(result.get("post_freq", 0), 2)),
+        "X-Post-Cents":  str(round(result.get("post_cents_vs_432", 0), 2)),
+        "X-Certified":   str(result.get("certified", False)),
+        "Access-Control-Expose-Headers": "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified",
+    }
+    return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4", headers=stats_headers)
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -70,3 +82,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def frontend():
     with open("static/index.html") as f:
         return f.read()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)

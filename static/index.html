@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rephase — Precisione svizzera a 432 Hz</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #e8e8e8; color: #1a1a1a; }
@@ -18,11 +19,11 @@ nav { background: #d0d0d0; border-bottom: 0.5px solid #b8b8b8; padding: 0 32px; 
 .card { background: #d8d8d8; border-radius: 18px; border: 0.5px solid #c0c0c0; overflow: hidden; margin-bottom: 16px; }
 .tabs { display: flex; background: #ccc; }
 .tab { flex: 1; text-align: center; padding: 14px; font-size: 14px; font-weight: 500; color: #444; cursor: pointer; border-bottom: 2.5px solid transparent; }
-.tab.active { color: #1a1a1a; background: #d8d8d8; border-bottom: 2.5px solid #34c759; }
+.tab.active { color: #1e8c3a; background: #d8d8d8; border-bottom: 3px solid #34c759; font-weight: 600; }
 .tab-content { display: none; padding: 24px; }
 .tab-content.active { display: block; }
 .drop-area { border: 1.5px dashed #aaa; border-radius: 12px; padding: 40px 24px; text-align: center; background: #e0e0e0; cursor: pointer; transition: all .2s; }
-.drop-area:hover { border-color: #1e8c3a; background: #d8eed8; }
+.drop-area:hover, .drop-area.drag-over { border-color: #1e8c3a; background: #d8eed8; border-style: solid; }
 .drop-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
 .drop-sub { font-size: 13px; color: #444; }
 .drop-sub a { color: #1e8c3a; font-weight: 500; cursor: pointer; }
@@ -39,7 +40,7 @@ input[type=file] { display: none; }
 .verdict-dot { width: 10px; height: 10px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
 .verdict-dot.gray { background: #888; }
 .verdict-text { font-size: 14px; font-weight: 500; }
-.verdict-sub { font-size: 12px; color: #333; margin-top: 2px; }
+.verdict-sub { font-size: 11px; color: #444; margin-top: 5px; line-height: 1.6; }
 .divider { height: 0.5px; background: #c0c0c0; margin: 20px 0; }
 .why { background: #c8c8c8; border-radius: 0 0 12px 12px; border-top: 2px solid #34c759; padding: 20px; }
 .why-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
@@ -49,7 +50,7 @@ input[type=file] { display: none; }
 .status.visible { display: block; }
 .format-select { display: flex; gap: 8px; margin-bottom: 16px; }
 .format-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #bbb; background: #e0e0e0; font-size: 13px; font-weight: 500; color: #333; cursor: pointer; text-align: center; }
-.format-btn.active { background: #1a1a1a; color: #e8e8e8; border-color: #1a1a1a; }
+.format-btn.active { background: #34c759; color: #1a1a1a; border-color: #34c759; }
 .btn-green { background: #34c759; color: #1a1a1a; border: none; border-radius: 980px; padding: 11px 28px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .plan { background: #d8d8d8; border-radius: 18px; border: 0.5px solid #c0c0c0; padding: 24px; }
@@ -58,10 +59,16 @@ input[type=file] { display: none; }
 .plan-name { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
 .plan-price { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; }
 .plan-price span { font-size: 15px; font-weight: 400; color: #444; }
+#pro-price-val { font-size: 32px; font-weight: 700; letter-spacing: -1px; color: #1a1a1a; }
 .plan-desc { font-size: 13px; color: #444; margin-bottom: 16px; }
 .plan-features { list-style: none; }
 .plan-features li { font-size: 13px; color: #333; padding: 5px 0; display: flex; align-items: center; gap: 8px; }
 .plan-features li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
+.billing-toggle { display: flex; background: #c8c8c8; border-radius: 980px; padding: 3px; margin-bottom: 14px; }
+.billing-opt { flex: 1; text-align: center; font-size: 12px; font-weight: 500; color: #555; padding: 5px 0; border-radius: 980px; cursor: pointer; transition: background .15s, color .15s; }
+.billing-opt.active { background: #34c759; color: #1a1a1a; }
+.price-save { font-size: 11px; font-weight: 700; background: #34c759; color: #1a1a1a; border-radius: 980px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; display: none; }
+.price-equiv { font-size: 11px; color: #444; margin-top: 2px; margin-bottom: 4px; display: none; }
 footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; background: #d0d0d0; }
 .footer-logo { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
 .footer-logo span { color: #1e8c3a; }
@@ -69,10 +76,15 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 .hidden { display: none !important; }
 @keyframes rephase-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.75;transform:scale(1.04);}}
 .logo{animation:rephase-pulse 2.8s ease-in-out infinite;}
-.tube-wrap{display:none;flex-direction:column;align-items:center;padding:32px 0 16px;}
-.tube-wrap.visible{display:flex;}
-.tube-label-top{font-size:11px;font-weight:600;letter-spacing:1.5px;color:#888;text-transform:uppercase;margin-bottom:18px;}
-.tube-percent{margin-top:14px;font-size:14px;font-weight:700;color:#1e8c3a;letter-spacing:0.5px;}
+.status.processing { color: #1e8c3a; font-weight: 600; animation: rephase-pulse 1.8s ease-in-out infinite; }
+.spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
+.spectral-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
+.spectral-panel { background: #d0d0d0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.spectral-chart-wrap { position: relative; height: 280px; margin-bottom: 14px; }
+.tech-table { width: 100%; border-collapse: collapse; font-family: 'SF Mono','Fira Code','Menlo','Courier New',monospace; font-size: 11px; }
+.tech-table td { padding: 5px 8px; border-bottom: 0.5px solid #c0c0c0; color: #1a1a1a; vertical-align: top; }
+.tech-table td:first-child { color: #555; width: 54%; }
+.tech-table tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body ondragover="event.preventDefault()" ondrop="event.preventDefault()">
@@ -98,7 +110,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     </div>
     <div class="tab-content active" id="tab-verify">
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" onclick="document.getElementById('file-verify').click()">
+      <div class="drop-area" id="drop-area-verify" onclick="document.getElementById('file-verify').click()">
         <div class="drop-title">Trascina il tuo file audio</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
@@ -123,10 +135,25 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         </div>
         <div class="verdict" id="rv-verdict">
           <div class="verdict-dot" id="rv-dot"></div>
-          <div>
-            <div class="verdict-text" id="rv-text">—</div>
-            <div class="verdict-sub" id="rv-vsub">—</div>
-          </div>
+          <div class="verdict-text" id="rv-text">—</div>
+        </div>
+        <div id="rv-detail" style="font-size:11px;color:#444;margin:-12px 0 12px 0;padding:0 4px;line-height:1.7;"></div>
+        <button id="btn-spectral" class="spectral-btn hidden" onclick="toggleSpectral()">Analisi spettrale ↓</button>
+        <div id="spectral-panel" class="spectral-panel hidden">
+          <div class="spectral-chart-wrap"><canvas id="fft-chart"></canvas></div>
+          <table class="tech-table">
+            <tr><td>A4 misurato (media pesata)</td><td id="tp-a4w">—</td></tr>
+            <tr><td>A4 mediana</td><td id="tp-a4med">—</td></tr>
+            <tr><td>Deviazione standard</td><td id="tp-a4std">—</td></tr>
+            <tr><td>Finestre analizzate</td><td id="tp-votes">—</td></tr>
+            <tr><td>Risoluzione spettrale</td><td id="tp-res">—</td></tr>
+            <tr><td>Window size</td><td id="tp-winsize">—</td></tr>
+            <tr><td>Sample rate</td><td id="tp-sr">—</td></tr>
+            <tr><td>Scostamento da 432 Hz</td><td id="tp-c432">—</td></tr>
+            <tr><td>Scostamento da 440 Hz</td><td id="tp-c440">—</td></tr>
+            <tr><td>Soglia certificazione</td><td id="tp-thresh">—</td></tr>
+            <tr><td>Algoritmo</td><td id="tp-algo">—</td></tr>
+          </table>
         </div>
         <div class="divider"></div>
         <div class="why">
@@ -142,72 +169,36 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="format-btn" onclick="selectFormat('m4a',this)">M4A</div>
       </div>
       <input type="file" id="file-convert" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" onclick="document.getElementById('file-convert').click()">
+      <div class="drop-area" id="drop-area-convert" onclick="document.getElementById('file-convert').click()">
         <div class="drop-title" id="convert-label">Trascina il file da convertire</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
 
-      <!-- SVG REPHASE liquid fill verticale -->
-      <div class="tube-wrap" id="tube-wrap">
-        <div class="tube-label-top">Conversione in corso</div>
-        <!--
-          SVG: 7 lettere impilate verticalmente, ciascuna alta 60px.
-          Totale altezza: 7*60 = 420px.
-          Un rettangolo verde sale dal basso (y=420) clippato all'intero testo.
-          Le lettere outline restano sopra per effetto vetro.
-          L in basso = E (ultima lettera), in alto = R (prima lettera).
-          Ordine visivo dall'alto: R E P H A S E
-        -->
-        <svg id="rephase-svg" width="80" height="420" viewBox="0 0 80 420" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="lg" x1="0" y1="1" x2="0" y2="0">
-              <stop offset="0%" stop-color="#145c26"/>
-              <stop offset="50%" stop-color="#1e8c3a"/>
-              <stop offset="100%" stop-color="#34c759"/>
-            </linearGradient>
-            <clipPath id="tc">
-              <text x="40" y="55"   text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">R</text>
-              <text x="40" y="115"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">E</text>
-              <text x="40" y="175"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">P</text>
-              <text x="40" y="235"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">H</text>
-              <text x="40" y="295"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">A</text>
-              <text x="40" y="355"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">S</text>
-              <text x="40" y="415"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900">E</text>
-            </clipPath>
-          </defs>
-
-          <!-- Lettere outline trasparente sfondo -->
-          <text x="40" y="55"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">R</text>
-          <text x="40" y="115" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">E</text>
-          <text x="40" y="175" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">P</text>
-          <text x="40" y="235" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">H</text>
-          <text x="40" y="295" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">A</text>
-          <text x="40" y="355" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">S</text>
-          <text x="40" y="415" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="transparent" stroke="rgba(30,30,30,0.2)" stroke-width="1">E</text>
-
-          <!-- Rettangolo verde che sale dal basso clippato alle lettere -->
-          <g clip-path="url(#tc)">
-            <rect id="liq" x="0" y="420" width="80" height="0" fill="url(#lg)"/>
-          </g>
-
-          <!-- Outline scuro sopra per effetto bordo vetro -->
-          <text x="40" y="55"  text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">R</text>
-          <text x="40" y="115" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">E</text>
-          <text x="40" y="175" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">P</text>
-          <text x="40" y="235" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">H</text>
-          <text x="40" y="295" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">A</text>
-          <text x="40" y="355" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">S</text>
-          <text x="40" y="415" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="56" font-weight="900" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.2">E</text>
-        </svg>
-        <div class="tube-percent" id="tube-percent">0%</div>
+      <div class="status" id="status-convert"></div>
+      <div id="result-already432" class="hidden" style="padding:20px 0;">
+        <div class="verdict" id="cv-already-verdict" style="margin-bottom:0;">
+          <div class="verdict-dot"></div>
+          <div class="verdict-text" id="cv-already-text"></div>
+        </div>
+        <div id="cv-already-detail" style="font-size:11px;color:#444;margin-top:6px;padding:0 4px;line-height:1.7;"></div>
       </div>
-
-      <div class="status" id="status-convert">Errore nella conversione.</div>
       <div id="result-convert" class="hidden" style="text-align:center;padding:20px 0;">
         <div style="font-size:32px;font-weight:700;color:#34c759;margin-bottom:8px;">432.0 Hz ✓</div>
-        <div style="font-size:14px;color:#555;margin-bottom:20px;">Il tuo brano è stato convertito con precisione svizzera.</div>
+        <div style="font-size:14px;color:#555;margin-bottom:12px;">Il tuo brano è stato convertito con precisione svizzera.</div>
+        <div id="cv-detail" style="font-size:11px;color:#444;margin-bottom:20px;line-height:1.7;white-space:pre-line;"></div>
         <a id="download-link" href="#" download><button class="btn-green">Scarica il file convertito</button></a>
-        <div style="font-size:11px;color:#aaa;margin-top:12px;">File cancellato dai server entro 60 secondi.</div>
+        <div style="font-size:11px;color:#1e8c3a;margin-top:12px;">File cancellato dai server entro 60 secondi.</div>
+        <button id="btn-spectral-conv" class="spectral-btn hidden" style="margin-top:10px;" onclick="toggleSpectralConv()">Analisi spettrale ↓</button>
+        <div id="spectral-panel-conv" class="spectral-panel hidden" style="text-align:left;margin-top:8px;">
+          <div class="spectral-chart-wrap"><canvas id="fft-chart-conv"></canvas></div>
+          <table class="tech-table">
+            <tr><td>Frequenza originale</td><td id="tpc-pre">—</td></tr>
+            <tr><td>Frequenza convertita</td><td id="tpc-post">—</td></tr>
+            <tr><td>Shift applicato</td><td id="tpc-shift">—</td></tr>
+            <tr><td>Scostamento post da 432 Hz</td><td id="tpc-cents">—</td></tr>
+            <tr><td>Certificato</td><td id="tpc-cert">—</td></tr>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -226,7 +217,12 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     <div class="plan featured">
       <div class="plan-badge">Più popolare</div>
       <div class="plan-name">Pro</div>
-      <div class="plan-price">CHF 4.95 <span>/mese</span></div>
+      <div class="billing-toggle">
+        <div class="billing-opt active" onclick="setBilling('monthly',this)">Mensile</div>
+        <div class="billing-opt" onclick="setBilling('annual',this)">Annuale</div>
+      </div>
+      <div class="plan-price"><span id="pro-price-val">CHF 4.95</span><span id="pro-period"> /mese</span><span class="price-save" id="pro-save">&minus;17%</span></div>
+      <div class="price-equiv" id="pro-equiv">CHF 4.08/mese in media &middot; risparmi CHF 10.40</div>
       <div class="plan-desc">Per gli appassionati</div>
       <ul class="plan-features">
         <li>Verifiche illimitate</li>
@@ -243,17 +239,304 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   <div class="footer-text">Out of phase? Get <span style="font-weight:700;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span><br>Server in Svizzera. File cancellati entro 60 secondi.<br>© 2026 Rephase. Tutti i diritti riservati.</div>
 </footer>
 <script>
-const API="https://rephase.app";
-let fmt="mp3",tubeTimer=null;
-const SVG_H=420;
+const API="";
+let fmt="mp3",convTimer=null,convPct=0;
+let fftChart = null, fftChartConv = null;
+let convertOrigFile = null, convertBlob = null, convertHeaders = null;
+function toggleSpectral() {
+  const panel = document.getElementById('spectral-panel');
+  const btn   = document.getElementById('btn-spectral');
+  const open  = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  btn.textContent = open ? 'Analisi spettrale \u2191' : 'Analisi spettrale \u2193';
+}
+function renderSpectral(d, filename) {
+  // Table — all values from API, no hardcoding
+  const sign = v => (v >= 0 ? '+' : '') + v;
+  const set  = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.textContent = v; };
+  set('tp-a4w',    (d.a4_weighted   ?? d.peak_freq).toFixed(4) + ' Hz');
+  set('tp-a4med',  (d.a4_median     ?? d.peak_freq_median).toFixed(4) + ' Hz');
+  set('tp-a4std',  (d.a4_std        ?? d.peak_freq_std).toFixed(4) + ' Hz');
+  set('tp-votes',  d.n_votes);
+  set('tp-res',    d.resolution_hz != null ? d.resolution_hz.toFixed(4) + ' Hz/bin' : null);
+  set('tp-winsize',d.window_size != null ? d.window_size.toLocaleString() + ' campioni (\u223c' + (d.window_size / (d.sample_rate ?? 44100)).toFixed(2) + ' sec)' : null);
+  set('tp-sr',     d.sample_rate != null ? d.sample_rate.toLocaleString() + ' Hz' : null);
+  set('tp-c432',   d.cents_vs_432 != null ? sign(d.cents_vs_432.toFixed(3)) + ' cent' : null);
+  set('tp-c440',   d.cents_vs_440 != null ? sign(d.cents_vs_440.toFixed(3)) + ' cent' : null);
+  set('tp-thresh', d.cert_threshold_cents != null ? '\u00b1' + d.cert_threshold_cents.toFixed(3) + ' cent' : null);
+  set('tp-algo',   d.algorithm);
+  // Chart
+  if (!d.fft_freqs || !d.fft_freqs.length) {
+    document.getElementById('btn-spectral').classList.remove('hidden');
+    return;
+  }
+  const freqs = d.fft_freqs;
+  const amps  = d.fft_amplitudes;
+  const a4    = d.a4_weighted ?? d.peak_freq;
+  // Interpolate amplitude at a4 frequency
+  let a4Amp = 1.0;
+  for (let i = 0; i < freqs.length - 1; i++) {
+    if (freqs[i] <= a4 && freqs[i+1] >= a4) {
+      const t = (a4 - freqs[i]) / (freqs[i+1] - freqs[i]);
+      a4Amp = amps[i] + t * (amps[i+1] - amps[i]);
+      break;
+    }
+  }
+  // Vertical reference lines as dense point arrays
+  const vline = x => Array.from({length: 51}, (_, i) => ({x, y: i / 50}));
+  if (fftChart) { fftChart.destroy(); fftChart = null; }
+  const ctx = document.getElementById('fft-chart').getContext('2d');
+  fftChart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'Spettro FFT', data: freqs.map((f,i) => ({x:f, y:amps[i]})),
+        showLine:true, borderColor:'#1e8c3a', backgroundColor:'transparent',
+        borderWidth:1.5, pointRadius:0, tension:0, order:3 },
+      { label: '432 Hz', data: vline(432),
+        showLine:true, borderColor:'rgba(210,45,45,0.75)', backgroundColor:'transparent',
+        borderWidth:1.5, borderDash:[6,4], pointRadius:0, order:2 },
+      { label: '440 Hz', data: vline(440),
+        showLine:true, borderColor:'rgba(40,80,200,0.75)', backgroundColor:'transparent',
+        borderWidth:1.5, borderDash:[6,4], pointRadius:0, order:2 },
+      { label: 'A4: ' + a4.toFixed(1) + ' Hz', data: [{x:a4, y:a4Amp}],
+        backgroundColor:'#34c759', borderColor:'#1e8c3a',
+        pointRadius:7, pointHoverRadius:9, order:1 }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        title: { display:true, text:'Spettro FFT \u2014 ' + filename,
+                 font:{size:12,weight:'600'}, color:'#1a1a1a', padding:{bottom:10} },
+        legend: { display:true, position:'bottom',
+                  labels:{font:{size:10}, color:'#444', boxWidth:20, padding:10} }
+      },
+      scales: {
+        x: { type:'logarithmic', min:50, max:2000,
+             title:{display:true, text:'Frequenza (Hz)', font:{size:10}, color:'#555'},
+             ticks:{ color:'#555', font:{size:10},
+               callback: v => [50,100,200,432,440,1000,2000].includes(+v.toFixed(0)) ? v : '' },
+             grid:{ color:'rgba(0,0,0,0.07)' } },
+        y: { min:0, max:1,
+             title:{display:true, text:'Ampiezza norm.', font:{size:10}, color:'#555'},
+             ticks:{ color:'#555', font:{size:10} },
+             grid:{ color:'rgba(0,0,0,0.07)' } }
+      }
+    }
+  });
+  document.getElementById('btn-spectral').classList.remove('hidden');
+}
+async function toggleSpectralConv() {
+  const panel = document.getElementById('spectral-panel-conv');
+  const btn   = document.getElementById('btn-spectral-conv');
+  const open  = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  btn.textContent = open ? 'Analisi spettrale \u2191' : 'Analisi spettrale \u2193';
+  if (open && !fftChartConv && convertOrigFile && convertBlob) {
+    btn.textContent = 'Caricamento spettri...';
+    btn.disabled = true;
+    try {
+      const fd1 = new FormData(); fd1.append('file', convertOrigFile);
+      const fd2 = new FormData(); fd2.append('file', new File([convertBlob], 'conv.' + fmt, {type: convertBlob.type}));
+      const [origData, convData] = await Promise.all([
+        fetch(API + '/verify', {method:'POST', body:fd1}).then(r => r.json()),
+        fetch(API + '/verify', {method:'POST', body:fd2}).then(r => r.json())
+      ]);
+      renderSpectralConvert(origData, convData, convertHeaders);
+      btn.textContent = 'Analisi spettrale \u2191';
+    } catch(e) {
+      btn.textContent = 'Errore analisi spettrale';
+    }
+    btn.disabled = false;
+  }
+}
+function renderSpectralConvert(origData, convData, h) {
+  const sign = v => (v >= 0 ? '+' : '') + v;
+  const set  = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.textContent = v; };
+  set('tpc-pre',   h.preFreq.toFixed(4)  + ' Hz');
+  set('tpc-post',  h.postFreq.toFixed(4) + ' Hz');
+  set('tpc-shift', sign(h.shiftCent.toFixed(4)) + ' cent');
+  set('tpc-cents', sign(h.postCents.toFixed(3))  + ' cent');
+  set('tpc-cert',  h.certified ? 'S\u00ec \u2713' : 'No');
+  if (!origData.fft_freqs || !convData.fft_freqs) return;
+  const freqsO = origData.fft_freqs, ampsO = origData.fft_amplitudes;
+  const freqsC = convData.fft_freqs,  ampsC = convData.fft_amplitudes;
+  const a4post = convData.a4_weighted ?? convData.peak_freq;
+  let a4Amp = 1.0;
+  for (let i = 0; i < freqsC.length - 1; i++) {
+    if (freqsC[i] <= a4post && freqsC[i+1] >= a4post) {
+      const t = (a4post - freqsC[i]) / (freqsC[i+1] - freqsC[i]);
+      a4Amp = ampsC[i] + t * (ampsC[i+1] - ampsC[i]);
+      break;
+    }
+  }
+  const vline = x => Array.from({length: 51}, (_, i) => ({x, y: i / 50}));
+  if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
+  const ctx = document.getElementById('fft-chart-conv').getContext('2d');
+  fftChartConv = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'Originale (' + h.preFreq.toFixed(1) + ' Hz)',
+        data: freqsO.map((f,i) => ({x:f, y:ampsO[i]})),
+        showLine:true, borderColor:'#888', backgroundColor:'transparent',
+        borderWidth:1.5, pointRadius:0, tension:0, order:4 },
+      { label: 'Convertito (432 Hz)',
+        data: freqsC.map((f,i) => ({x:f, y:ampsC[i]})),
+        showLine:true, borderColor:'#34c759', backgroundColor:'transparent',
+        borderWidth:1.5, pointRadius:0, tension:0, order:3 },
+      { label: '432 Hz', data: vline(432),
+        showLine:true, borderColor:'rgba(210,45,45,0.75)', backgroundColor:'transparent',
+        borderWidth:1.5, borderDash:[6,4], pointRadius:0, order:2 },
+      { label: 'A4 post: ' + a4post.toFixed(1) + ' Hz', data: [{x:a4post, y:a4Amp}],
+        backgroundColor:'#34c759', borderColor:'#1e8c3a',
+        pointRadius:7, pointHoverRadius:9, order:1 }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        title: { display:true, text:'Spettro FFT \u2014 confronto pre/post conversione',
+                 font:{size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:10} },
+        legend: { display:true, position:'bottom',
+                  labels:{font:{size:10}, color:'#444', boxWidth:20, padding:10} }
+      },
+      scales: {
+        x: { type:'logarithmic', min:50, max:2000,
+             title:{display:true, text:'Frequenza (Hz)', font:{size:10}, color:'#555'},
+             ticks:{ color:'#555', font:{size:10},
+               callback: v => [50,100,200,432,440,1000,2000].includes(+v.toFixed(0)) ? v : '' },
+             grid:{ color:'rgba(0,0,0,0.07)' } },
+        y: { min:0, max:1,
+             title:{display:true, text:'Ampiezza norm.', font:{size:10}, color:'#555'},
+             ticks:{ color:'#555', font:{size:10} },
+             grid:{ color:'rgba(0,0,0,0.07)' } }
+      }
+    }
+  });
+}
+function setBilling(mode,el){
+  el.parentNode.querySelectorAll('.billing-opt').forEach(o=>o.classList.remove('active'));
+  el.classList.add('active');
+  const annual=(mode==='annual');
+  document.getElementById('pro-price-val').textContent=annual?'CHF 49.00':'CHF 4.95';
+  document.getElementById('pro-period').textContent=annual?' /anno':' /mese';
+  document.getElementById('pro-save').style.display=annual?'inline-block':'none';
+  document.getElementById('pro-equiv').style.display=annual?'block':'none';
+}
 function switchTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');}
 function selectFormat(f,el){fmt=f;document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');}
-function setLiq(pct){const h=SVG_H*pct/100;const r=document.getElementById('liq');r.setAttribute('y',SVG_H-h);r.setAttribute('height',h);document.getElementById('tube-percent').textContent=Math.round(pct)+'%';}
-function tubeStart(){clearInterval(tubeTimer);setLiq(0);document.getElementById('result-convert').classList.add('hidden');document.getElementById('status-convert').classList.remove('visible');document.getElementById('tube-wrap').classList.add('visible');let p=0;tubeTimer=setInterval(()=>{if(p<85){p+=Math.random()*2.5+0.8;if(p>85)p=85;setLiq(p);}},180);}
-function tubeComplete(){clearInterval(tubeTimer);let p=parseFloat(document.getElementById('tube-percent').textContent)||85;const f=setInterval(()=>{p+=2.5;if(p>=100){setLiq(100);clearInterval(f);setTimeout(()=>{document.getElementById('tube-wrap').classList.remove('visible');document.getElementById('result-convert').classList.remove('hidden');},800);}else{setLiq(p);}},35);}
-function tubeError(msg){clearInterval(tubeTimer);document.getElementById('tube-wrap').classList.remove('visible');const st=document.getElementById('status-convert');st.textContent=msg||'Errore.';st.classList.add('visible');}
-document.getElementById('file-verify').addEventListener('change',async function(){const file=this.files[0];if(!file)return;document.getElementById('result-verify').classList.add('hidden');const st=document.getElementById('status-verify');st.textContent='Analisi in corso...';st.classList.add('visible');const fd=new FormData();fd.append('file',file);try{const res=await fetch(`${API}/verify`,{method:'POST',body:fd});const d=await res.json();st.classList.remove('visible');document.getElementById('rv-freq').textContent=d.peak_freq.toFixed(1)+' Hz';document.getElementById('rv-sub').textContent=d.verdict;document.getElementById('rv-cents').textContent=(d.cents_vs_432>=0?'+':'')+d.cents_vs_432.toFixed(1);document.getElementById('rv-text').textContent=d.message;const ok=d.is_432;document.getElementById('rv-verdict').className='verdict'+(ok?'':' fail');document.getElementById('rv-dot').className='verdict-dot'+(ok?'':' gray');document.getElementById('rv-vsub').textContent=ok?'Precisione svizzera certificata ✓':'Passa a "Converti a 432 Hz" per convertirlo';document.getElementById('result-verify').classList.remove('hidden');}catch(e){st.textContent='Errore — il backend è in esecuzione?';}});
-document.getElementById('file-convert').addEventListener('change',async function(){const file=this.files[0];if(!file)return;document.getElementById('convert-label').textContent=file.name;tubeStart();const fd=new FormData();fd.append('file',file);try{const res=await fetch(`${API}/convert?format=${fmt}`,{method:'POST',body:fd});if(!res.ok){tubeError('Errore nella conversione.');return;}const blob=await res.blob();const url=URL.createObjectURL(blob);const stem=file.name.replace(/\.[^.]+$/,'');document.getElementById('download-link').href=url;document.getElementById('download-link').download=`${stem}_432.${fmt}`;tubeComplete();}catch(e){tubeError('Errore — il backend è in esecuzione?');}});
+function convSetPct(p){convPct=p;const st=document.getElementById('status-convert');st.textContent='Conversione in corso... '+Math.round(p)+'%';}
+function tubeStart(){clearInterval(convTimer);convPct=0;const st=document.getElementById('status-convert');st.className='status visible processing';convSetPct(0);document.getElementById('result-convert').classList.add('hidden');convTimer=setInterval(()=>{if(convPct<85){convPct+=Math.random()*2.5+0.8;if(convPct>85)convPct=85;convSetPct(convPct);}},180);}
+function tubeComplete(){clearInterval(convTimer);const sprint=setInterval(()=>{convPct+=2.5;if(convPct>=100){convSetPct(100);clearInterval(sprint);setTimeout(()=>{const st=document.getElementById('status-convert');st.className='status';st.textContent='';document.getElementById('result-convert').classList.remove('hidden');},600);}else{convSetPct(convPct);}},35);}
+function tubeError(msg){clearInterval(convTimer);const st=document.getElementById('status-convert');st.className='status visible';st.textContent=msg||'Errore.';}
+['drop-area-verify','drop-area-convert'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
+  el.addEventListener('dragleave',e=>{if(!el.contains(e.relatedTarget))el.classList.remove('drag-over');});
+  el.addEventListener('drop',e=>{
+    e.preventDefault();el.classList.remove('drag-over');
+    const file=e.dataTransfer.files[0];if(!file)return;
+    const inputId=id==='drop-area-verify'?'file-verify':'file-convert';
+    const dt=new DataTransfer();dt.items.add(file);
+    document.getElementById(inputId).files=dt.files;
+    document.getElementById(inputId).dispatchEvent(new Event('change'));
+  });
+});
+document.getElementById('file-verify').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  document.getElementById('result-verify').classList.add('hidden');
+  document.getElementById('rv-detail').textContent = '';
+  document.getElementById('btn-spectral').classList.add('hidden');
+  document.getElementById('spectral-panel').classList.add('hidden');
+  document.getElementById('btn-spectral').textContent = 'Analisi spettrale \u2193';
+  const st = document.getElementById('status-verify');
+  st.textContent = 'Analisi in corso...';
+  st.className = 'status visible processing';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch(API + '/verify', {method:'POST', body:fd});
+    const d = await res.json();
+    st.className = 'status';
+    const ok = d.is_432;
+    const cSign = d.cents_vs_432 >= 0 ? '+' : '';
+    document.getElementById('rv-freq').textContent = d.peak_freq.toFixed(1) + ' Hz';
+    document.getElementById('rv-sub').textContent = d.verdict;
+    document.getElementById('rv-cents').textContent = cSign + d.cents_vs_432.toFixed(1);
+    document.getElementById('rv-verdict').className = 'verdict' + (ok ? '' : ' fail');
+    document.getElementById('rv-dot').className = 'verdict-dot' + (ok ? '' : ' gray');
+    document.getElementById('rv-text').textContent = ok ? 'Certificato a 432 Hz \u2713' : 'Questo brano NON \u00e8 a 432 Hz';
+    const detail = ok
+      ? 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent  \u00b7  Analisi su ' + d.n_votes + ' finestre'
+      : 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
+    document.getElementById('rv-detail').textContent = detail;
+    document.getElementById('result-verify').classList.remove('hidden');
+    renderSpectral(d, file.name);
+  } catch(e) {
+    st.textContent = 'Errore — il backend \u00e8 in esecuzione?';
+  }
+});
+
+document.getElementById('file-convert').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  document.getElementById('convert-label').textContent = file.name;
+  document.getElementById('cv-detail').textContent = '';
+  document.getElementById('result-convert').classList.add('hidden');
+  document.getElementById('result-already432').classList.add('hidden');
+  document.getElementById('btn-spectral-conv').classList.add('hidden');
+  document.getElementById('spectral-panel-conv').classList.add('hidden');
+  document.getElementById('btn-spectral-conv').textContent = 'Analisi spettrale \u2193';
+  if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
+  convertOrigFile = null; convertBlob = null; convertHeaders = null;
+  tubeStart();
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch(API + '/convert?format=' + fmt, {method:'POST', body:fd});
+    if (!res.ok) { tubeError('Errore nella conversione.'); return; }
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const d = await res.json();
+      clearInterval(convTimer);
+      const st = document.getElementById('status-convert');
+      st.className = 'status';
+      st.textContent = '';
+      const cSign = d.cents_vs_432 >= 0 ? '+' : '';
+      document.getElementById('cv-already-text').textContent = 'Questo brano \u00e8 gi\u00e0 a 432 Hz \u2713';
+      document.getElementById('cv-already-detail').textContent =
+        'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent  \u00b7  Nessuna conversione necessaria';
+      document.getElementById('result-already432').classList.remove('hidden');
+      return;
+    }
+    const preFreq   = parseFloat(res.headers.get('X-Pre-Freq')  || '0');
+    const shiftCent = parseFloat(res.headers.get('X-Shift-Cents') || '0');
+    const postFreq  = parseFloat(res.headers.get('X-Post-Freq') || '0');
+    const postCents = parseFloat(res.headers.get('X-Post-Cents') || '0');
+    const cSign = shiftCent >= 0 ? '+' : '';
+    const pSign = postCents >= 0 ? '+' : '';
+    document.getElementById('cv-detail').textContent =
+      'Prima: ' + preFreq.toFixed(1) + ' Hz  \u00b7  Shift applicato: ' + cSign + shiftCent.toFixed(1) + ' cent' +
+      '\nDopo: ' + postFreq.toFixed(1) + ' Hz  \u00b7  Scostamento da 432 Hz: ' + pSign + postCents.toFixed(1) + ' cent';
+    const blob = await res.blob();
+    convertOrigFile = file;
+    convertBlob = blob;
+    convertHeaders = {
+      preFreq:   parseFloat(res.headers.get('X-Pre-Freq')    || '0'),
+      shiftCent: parseFloat(res.headers.get('X-Shift-Cents') || '0'),
+      postFreq:  parseFloat(res.headers.get('X-Post-Freq')   || '0'),
+      postCents: parseFloat(res.headers.get('X-Post-Cents')  || '0'),
+      certified: res.headers.get('X-Certified') === 'True'
+    };
+    const url = URL.createObjectURL(blob);
+    const stem = file.name.replace(/\.[^.]+$/, '');
+    document.getElementById('download-link').href = url;
+    document.getElementById('download-link').download = stem + '_432.' + fmt;
+    document.getElementById('btn-spectral-conv').classList.remove('hidden');
+    tubeComplete();
+  } catch(e) {
+    tubeError('Errore — il backend \u00e8 in esecuzione?');
+  }
+});
 </script>
 </body>
 </html>
