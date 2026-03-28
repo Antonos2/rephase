@@ -173,6 +173,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="drop-title" id="convert-label">Trascina il file da convertire</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
+      <div style="font-size:11px;color:#666;margin:6px 2px 0;">Formati supportati: MP3 &middot; M4A &middot; WAV &middot; FLAC &middot; AAC &middot; AIFF</div>
 
       <div class="status" id="status-convert"></div>
       <div id="result-already432" class="hidden" style="padding:20px 0;">
@@ -198,6 +199,10 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
             <tr><td>Scostamento post da 432 Hz</td><td id="tpc-cents">—</td></tr>
             <tr><td>Certificato</td><td id="tpc-cert">—</td></tr>
           </table>
+          <div style="margin-top:12px;">
+            <button onclick="this.nextElementSibling.classList.toggle('hidden');this.textContent=this.nextElementSibling.classList.contains('hidden')?'\u25bc Note':'\u25b2 Note'" style="background:none;border:none;font-size:11px;color:#666;cursor:pointer;padding:0;font-family:inherit;">&darr; Note</button>
+            <div class="hidden" style="margin-top:6px;font-family:'SF Mono','Fira Code','Menlo','Courier New',monospace;font-size:11px;color:#666;background:#c0c0c0;border-left:3px solid #888;padding:10px 12px;border-radius:0 6px 6px 0;line-height:1.6;">I formati M4A e AAC possono presentare un drift di pitch di &plusmn;0.09 cent rispetto a WAV/FLAC/MP3/AIFF dovuto alla compressione lossy AAC. Il valore &egrave; fisicamente impercettibile (soglia umana ~5 cent) e rientra ampiamente nella certificazione &plusmn;5 cent di Rephase.</div>
+          </div>
         </div>
       </div>
     </div>
