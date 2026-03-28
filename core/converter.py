@@ -140,12 +140,13 @@ def convert_to_432(input_path, output_path):
         post_cents = post["cents_vs_432"]
         certified  = abs(post_cents) < CERT_THRESHOLD_CENTS
         correction_passes = 1
+        corr_pass_error = None
         # Corrective second pass: compensate SoX non-linearity residual
         if not certified and abs(post_cents) < 30.0:
-            shift_corr = 1200.0 * math.log2(TARGET_HZ / post["peak_freq"])
             tmp_corr_in  = tempfile.mktemp(suffix=".wav")
             tmp_corr_out = tempfile.mktemp(suffix=".wav")
             try:
+                shift_corr = 1200.0 * math.log2(TARGET_HZ / post["peak_freq"])
                 _load_as_wav(output_path, tmp_corr_in, channels=2)
                 subprocess.run(["sox", tmp_corr_in, tmp_corr_out, "pitch", f"{shift_corr:.4f}"], check=True, capture_output=True)
                 if ext == ".mp3":
@@ -160,24 +161,31 @@ def convert_to_432(input_path, output_path):
                 finally:
                     if os.path.exists(tmp_post2): os.remove(tmp_post2)
                 if post2["success"]:
-                    post       = post2
-                    post_cents = post2["cents_vs_432"]
-                    certified  = abs(post_cents) < CERT_THRESHOLD_CENTS
-            except Exception:
-                pass  # keep pass-1 result on any corrective-pass failure
+                    post           = post2
+                    post_cents     = post2["cents_vs_432"]
+                    certified      = abs(post_cents) < CERT_THRESHOLD_CENTS
+                    correction_passes = 2
+                else:
+                    corr_pass_error = f"measure_a4 failed: {post2.get('error')}"
+            except subprocess.CalledProcessError as e:
+                corr_pass_error = f"subprocess: {e.stderr.decode(errors='replace')[:200] if e.stderr else str(e)}"
+            except Exception as e:
+                corr_pass_error = str(e)
             finally:
                 for f in [tmp_corr_in, tmp_corr_out]:
                     if os.path.exists(f): os.remove(f)
-            correction_passes = 2
         message = (f"Certificato a 432 Hz \u2713 (pass {correction_passes}, \u0394 {post_cents:+.2f} cent)"
                    if certified else
                    f"Conversione completata, verifica manuale consigliata (pass {correction_passes}, \u0394 {post_cents:+.2f} cent)")
-        return {"success": True, "already_432": False, "pre_freq": a4_original,
-                "pre_cents_vs_432": round(pre["cents_vs_432"],3), "pre_cents_vs_440": round(pre["cents_vs_440"],3),
-                "pre_verdict": pre["verdict"], "shift_applied": round(shift_cents,4),
-                "post_freq": post["peak_freq"], "post_cents_vs_432": round(post_cents,3),
-                "post_verdict": post["verdict"], "certified": certified,
-                "correction_passes": correction_passes, "target_hz": TARGET_HZ, "message": message}
+        result = {"success": True, "already_432": False, "pre_freq": a4_original,
+                  "pre_cents_vs_432": round(pre["cents_vs_432"],3), "pre_cents_vs_440": round(pre["cents_vs_440"],3),
+                  "pre_verdict": pre["verdict"], "shift_applied": round(shift_cents,4),
+                  "post_freq": post["peak_freq"], "post_cents_vs_432": round(post_cents,3),
+                  "post_verdict": post["verdict"], "certified": certified,
+                  "correction_passes": correction_passes, "target_hz": TARGET_HZ, "message": message}
+        if corr_pass_error:
+            result["corr_pass_error"] = corr_pass_error
+        return result
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode(errors="replace")[:400] if e.stderr else ""
         return {"success": False, "error": f"Errore processo: {stderr}"}

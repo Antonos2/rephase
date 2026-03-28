@@ -63,14 +63,19 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if not result["success"]: raise HTTPException(500, result.get("error","Errore"))
     background_tasks.add_task(cleanup, tmp_out)
     stem = Path(file.filename).stem
+    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes"
     stats_headers = {
-        "X-Pre-Freq":    str(round(result.get("pre_freq", 0), 2)),
-        "X-Shift-Cents": str(round(result.get("shift_applied", 0), 2)),
-        "X-Post-Freq":   str(round(result.get("post_freq", 0), 2)),
-        "X-Post-Cents":  str(round(result.get("post_cents_vs_432", 0), 2)),
-        "X-Certified":   str(result.get("certified", False)),
-        "Access-Control-Expose-Headers": "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified",
+        "X-Pre-Freq":          str(round(result.get("pre_freq", 0), 4)),
+        "X-Shift-Cents":       str(round(result.get("shift_applied", 0), 4)),
+        "X-Post-Freq":         str(round(result.get("post_freq", 0), 4)),
+        "X-Post-Cents":        str(round(result.get("post_cents_vs_432", 0), 4)),
+        "X-Certified":         str(result.get("certified", False)),
+        "X-Correction-Passes": str(result.get("correction_passes", 1)),
+        "Access-Control-Expose-Headers": exposed,
     }
+    if result.get("corr_pass_error"):
+        stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
+        stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
     return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4", headers=stats_headers)
 
 from fastapi.staticfiles import StaticFiles

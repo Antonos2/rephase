@@ -197,6 +197,8 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
             <tr><td>Frequenza convertita</td><td id="tpc-post">—</td></tr>
             <tr><td>Shift applicato</td><td id="tpc-shift">—</td></tr>
             <tr><td>Scostamento post da 432 Hz</td><td id="tpc-cents">—</td></tr>
+            <tr><td>Passaggi correttivi</td><td id="tpc-passes">—</td></tr>
+            <tr id="tpc-corr-err-row" style="display:none"><td>Errore secondo pass</td><td id="tpc-corr-err" style="color:#a32d2d;">—</td></tr>
             <tr><td>Certificato</td><td id="tpc-cert">—<span id="tpc-cert-note" style="display:none;font-size:11px;color:#666;font-weight:400;"></span></td></tr>
           </table>
           <div style="margin-top:12px;">
@@ -340,16 +342,25 @@ async function toggleSpectralConv() {
     btn.textContent = 'Caricamento spettri...';
     btn.disabled = true;
     try {
+      const convFmt = convertBlob.type.includes('mp4') ? 'm4a' : 'mp3';
       const fd1 = new FormData(); fd1.append('file', convertOrigFile);
-      const fd2 = new FormData(); fd2.append('file', new File([convertBlob], 'conv.' + fmt, {type: convertBlob.type}));
-      const [origData, convData] = await Promise.all([
-        fetch(API + '/verify', {method:'POST', body:fd1}).then(r => r.json()),
-        fetch(API + '/verify', {method:'POST', body:fd2}).then(r => r.json())
+      const fd2 = new FormData(); fd2.append('file', new File([convertBlob], 'conv.' + convFmt, {type: convertBlob.type}));
+      const [r1, r2] = await Promise.all([
+        fetch(API + '/verify', {method:'POST', body:fd1}),
+        fetch(API + '/verify', {method:'POST', body:fd2})
       ]);
+      if (!r1.ok) throw new Error('Verify originale: HTTP ' + r1.status);
+      if (!r2.ok) throw new Error('Verify convertito: HTTP ' + r2.status);
+      const [origData, convData] = await Promise.all([r1.json(), r2.json()]);
+      if (!origData.success) throw new Error('Verify originale: ' + (origData.error || 'errore sconosciuto'));
+      if (!convData.success) throw new Error('Verify convertito: ' + (convData.error || 'errore sconosciuto'));
       renderSpectralConvert(origData, convData, convertHeaders);
       btn.textContent = 'Analisi spettrale \u2191';
     } catch(e) {
-      btn.textContent = 'Errore analisi spettrale';
+      btn.textContent = 'Analisi spettrale \u2193';
+      const panel = document.getElementById('spectral-panel-conv');
+      panel.insertAdjacentHTML('afterbegin',
+        '<div style="font-size:11px;color:#a32d2d;padding:8px 0;">\u26a0 ' + e.message + '</div>');
     }
     btn.disabled = false;
   }
@@ -376,6 +387,15 @@ function renderSpectralConvert(origData, convData, h) {
       certNote.style.display = 'block';
       certNote.style.marginTop = '3px';
     }
+  }
+  set('tpc-passes', h.passes != null ? h.passes : '1');
+  const corrErrRow = document.getElementById('tpc-corr-err-row');
+  const corrErrEl  = document.getElementById('tpc-corr-err');
+  if (h.corrErr && corrErrRow && corrErrEl) {
+    corrErrEl.textContent = h.corrErr;
+    corrErrRow.style.display = '';
+  } else if (corrErrRow) {
+    corrErrRow.style.display = 'none';
   }
   if (!origData.fft_freqs || !convData.fft_freqs) return;
   const freqsO = origData.fft_freqs, ampsO = origData.fft_amplitudes;
@@ -545,7 +565,9 @@ document.getElementById('file-convert').addEventListener('change', async functio
       shiftCent: parseFloat(res.headers.get('X-Shift-Cents') || '0'),
       postFreq:  parseFloat(res.headers.get('X-Post-Freq')   || '0'),
       postCents: parseFloat(res.headers.get('X-Post-Cents')  || '0'),
-      certified: res.headers.get('X-Certified') === 'True'
+      certified: res.headers.get('X-Certified') === 'True',
+      passes:    parseInt(res.headers.get('X-Correction-Passes') || '1', 10),
+      corrErr:   res.headers.get('X-Corr-Pass-Error') || null
     };
     const url = URL.createObjectURL(blob);
     const stem = file.name.replace(/\.[^.]+$/, '');
