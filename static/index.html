@@ -18,11 +18,11 @@ nav { background: #d0d0d0; border-bottom: 0.5px solid #b8b8b8; padding: 0 32px; 
 .card { background: #d8d8d8; border-radius: 18px; border: 0.5px solid #c0c0c0; overflow: hidden; margin-bottom: 16px; }
 .tabs { display: flex; background: #ccc; }
 .tab { flex: 1; text-align: center; padding: 14px; font-size: 14px; font-weight: 500; color: #444; cursor: pointer; border-bottom: 2.5px solid transparent; }
-.tab.active { color: #1a1a1a; background: #d8d8d8; border-bottom: 2.5px solid #34c759; }
+.tab.active { color: #1a1a1a; background: #34c759; border-bottom: 2.5px solid #1e8c3a; }
 .tab-content { display: none; padding: 24px; }
 .tab-content.active { display: block; }
 .drop-area { border: 1.5px dashed #aaa; border-radius: 12px; padding: 40px 24px; text-align: center; background: #e0e0e0; cursor: pointer; transition: all .2s; }
-.drop-area:hover { border-color: #1e8c3a; background: #d8eed8; }
+.drop-area:hover, .drop-area.dragover { border-color: #1e8c3a; background: #d8eed8; }
 .drop-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
 .drop-sub { font-size: 13px; color: #444; }
 .drop-sub a { color: #1e8c3a; font-weight: 500; cursor: pointer; }
@@ -98,7 +98,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     </div>
     <div class="tab-content active" id="tab-verify">
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" onclick="document.getElementById('file-verify').click()">
+      <div class="drop-area" id="drop-area-verify" onclick="document.getElementById('file-verify').click()">
         <div class="drop-title">Trascina il tuo file audio</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
@@ -142,7 +142,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="format-btn" onclick="selectFormat('m4a',this)">M4A</div>
       </div>
       <input type="file" id="file-convert" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" onclick="document.getElementById('file-convert').click()">
+      <div class="drop-area" id="drop-area-convert" onclick="document.getElementById('file-convert').click()">
         <div class="drop-title" id="convert-label">Trascina il file da convertire</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
@@ -257,3 +257,30 @@ document.getElementById('file-convert').addEventListener('change',async function
 </script>
 </body>
 </html>
+<script>
+function setupDrop(dropId,handler){
+  const el=document.getElementById(dropId);
+  if(!el)return;
+  el.addEventListener('dragenter',e=>{e.preventDefault();e.stopPropagation();el.classList.add('dragover');});
+  el.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();});
+  el.addEventListener('dragleave',e=>{e.stopPropagation();el.classList.remove('dragover');});
+  el.addEventListener('drop',e=>{
+    e.preventDefault();e.stopPropagation();
+    el.classList.remove('dragover');
+    const file=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(file)handler(file);
+  });
+}
+function processVerifyDrop(f){
+  const input=document.getElementById('file-verify');
+  const dt=new DataTransfer();dt.items.add(f);input.files=dt.files;
+  input.dispatchEvent(new Event('change'));
+}
+function processConvertDrop(f){
+  const input=document.getElementById('file-convert');
+  const dt=new DataTransfer();dt.items.add(f);input.files=dt.files;
+  input.dispatchEvent(new Event('change'));
+}
+setupDrop('drop-area-verify',processVerifyDrop);
+setupDrop('drop-area-convert',processConvertDrop);
+</script>
