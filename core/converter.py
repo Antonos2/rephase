@@ -142,15 +142,22 @@ def convert_to_432(input_path, output_path):
         correction_passes = 1
         corr_pass_error = None
         print(f"[convert] post_freq={post['peak_freq']:.4f} Hz  post_cents={post_cents:+.4f}  certified={certified}  second_pass_trigger={not certified and abs(post_cents) < 30.0}", flush=True)
-        # Corrective second pass: compensate SoX non-linearity residual
+        # Corrective second pass: re-apply from original WAV with compensated shift.
+        # SoX applies only a fraction of the requested pitch shift (non-linear).
+        # efficiency = actual_shift / requested_shift = (shift_cents + post_cents) / shift_cents
+        # Compensated shift = shift_cents / efficiency, applied fresh on tmp_in (no lossy re-encode chain).
         if not certified and abs(post_cents) < 30.0:
-            tmp_corr_in  = tempfile.mktemp(suffix=".wav")
             tmp_corr_out = tempfile.mktemp(suffix=".wav")
             try:
-                shift_corr = 1200.0 * math.log2(TARGET_HZ / post["peak_freq"])
-                print(f"[convert] >>> second pass: shift_corr={shift_corr:+.4f} cent", flush=True)
-                _load_as_wav(output_path, tmp_corr_in, channels=2)
-                subprocess.run(["sox", tmp_corr_in, tmp_corr_out, "pitch", f"{shift_corr:.4f}"], check=True, capture_output=True)
+                eff = (shift_cents + post_cents) / shift_cents
+                if abs(eff) < 0.05:
+                    raise ValueError(f"Efficienza SoX non plausibile: {eff:.4f}")
+                shift_compensated = shift_cents / eff
+                # Clamp: non più di 3× lo shift originale per sicurezza
+                max_shift = abs(shift_cents) * 3.0
+                shift_compensated = max(-max_shift, min(max_shift, shift_compensated))
+                print(f"[convert] >>> second pass (from original): eff={eff:.4f}  shift_compensated={shift_compensated:+.4f} cent", flush=True)
+                subprocess.run(["sox", tmp_in, tmp_corr_out, "pitch", f"{shift_compensated:.4f}"], check=True, capture_output=True)
                 if ext == ".mp3":
                     subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"], check=True, capture_output=True)
                 elif ext == ".m4a":
@@ -178,8 +185,7 @@ def convert_to_432(input_path, output_path):
                 corr_pass_error = str(e)
                 print(f"[convert] >>> second pass Exception: {corr_pass_error}", flush=True)
             finally:
-                for f in [tmp_corr_in, tmp_corr_out]:
-                    if os.path.exists(f): os.remove(f)
+                if os.path.exists(tmp_corr_out): os.remove(tmp_corr_out)
         message = (f"Certificato a 432 Hz \u2713 (pass {correction_passes}, \u0394 {post_cents:+.2f} cent)"
                    if certified else
                    f"Conversione completata, verifica manuale consigliata (pass {correction_passes}, \u0394 {post_cents:+.2f} cent)")
