@@ -141,12 +141,14 @@ def convert_to_432(input_path, output_path):
         certified  = abs(post_cents) < CERT_THRESHOLD_CENTS
         correction_passes = 1
         corr_pass_error = None
+        print(f"[convert] post_freq={post['peak_freq']:.4f} Hz  post_cents={post_cents:+.4f}  certified={certified}  second_pass_trigger={not certified and abs(post_cents) < 30.0}", flush=True)
         # Corrective second pass: compensate SoX non-linearity residual
         if not certified and abs(post_cents) < 30.0:
             tmp_corr_in  = tempfile.mktemp(suffix=".wav")
             tmp_corr_out = tempfile.mktemp(suffix=".wav")
             try:
                 shift_corr = 1200.0 * math.log2(TARGET_HZ / post["peak_freq"])
+                print(f"[convert] >>> second pass: shift_corr={shift_corr:+.4f} cent", flush=True)
                 _load_as_wav(output_path, tmp_corr_in, channels=2)
                 subprocess.run(["sox", tmp_corr_in, tmp_corr_out, "pitch", f"{shift_corr:.4f}"], check=True, capture_output=True)
                 if ext == ".mp3":
@@ -165,12 +167,16 @@ def convert_to_432(input_path, output_path):
                     post_cents     = post2["cents_vs_432"]
                     certified      = abs(post_cents) < CERT_THRESHOLD_CENTS
                     correction_passes = 2
+                    print(f"[convert] >>> second pass result: post2_cents={post_cents:+.4f}  certified={certified}", flush=True)
                 else:
                     corr_pass_error = f"measure_a4 failed: {post2.get('error')}"
+                    print(f"[convert] >>> second pass FAILED: {corr_pass_error}", flush=True)
             except subprocess.CalledProcessError as e:
                 corr_pass_error = f"subprocess: {e.stderr.decode(errors='replace')[:200] if e.stderr else str(e)}"
+                print(f"[convert] >>> second pass CalledProcessError: {corr_pass_error}", flush=True)
             except Exception as e:
                 corr_pass_error = str(e)
+                print(f"[convert] >>> second pass Exception: {corr_pass_error}", flush=True)
             finally:
                 for f in [tmp_corr_in, tmp_corr_out]:
                     if os.path.exists(f): os.remove(f)

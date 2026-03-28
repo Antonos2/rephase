@@ -199,7 +199,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
             <tr><td>Scostamento post da 432 Hz</td><td id="tpc-cents">—</td></tr>
             <tr><td>Passaggi correttivi</td><td id="tpc-passes">—</td></tr>
             <tr id="tpc-corr-err-row" style="display:none"><td>Errore secondo pass</td><td id="tpc-corr-err" style="color:#a32d2d;">—</td></tr>
-            <tr><td>Certificato</td><td id="tpc-cert">—<span id="tpc-cert-note" style="display:none;font-size:11px;color:#666;font-weight:400;"></span></td></tr>
+            <tr><td>Certificato</td><td id="tpc-cert"><span id="tpc-cert-val">—</span><span id="tpc-cert-note" style="display:none;font-size:11px;color:#666;font-weight:400;"></span></td></tr>
           </table>
           <div style="margin-top:12px;">
             <button onclick="this.nextElementSibling.classList.toggle('hidden');this.textContent=this.nextElementSibling.classList.contains('hidden')?'\u25bc Note':'\u25b2 Note'" style="background:none;border:none;font-size:11px;color:#666;cursor:pointer;padding:0;font-family:inherit;">&darr; Note</button>
@@ -372,20 +372,22 @@ function renderSpectralConvert(origData, convData, h) {
   set('tpc-post',  h.postFreq.toFixed(4) + ' Hz');
   set('tpc-shift', sign(h.shiftCent.toFixed(4)) + ' cent');
   set('tpc-cents', sign(h.postCents.toFixed(3))  + ' cent');
-  const certEl = document.getElementById('tpc-cert');
+  const certVal  = document.getElementById('tpc-cert-val');
   const certNote = document.getElementById('tpc-cert-note');
-  if (certEl) {
+  if (certVal) {
     if (h.certified) {
-      certEl.firstChild.textContent = 'S\u00ec \u2713';
-      certEl.firstChild.style.color = '';
-      certNote.style.display = 'none';
+      certVal.textContent = 'S\u00ec \u2713';
+      certVal.style.color = '';
+      if (certNote) certNote.style.display = 'none';
     } else {
       const pSign = h.postCents >= 0 ? '+' : '';
-      certEl.firstChild.textContent = 'No';
-      certEl.firstChild.style.color = '#a32d2d';
-      certNote.textContent = ' \u2014 scostamento residuo ' + pSign + h.postCents.toFixed(2) + ' cent, oltre la soglia \u00b15.0 cent. Percettivamente irrilevante (soglia uditiva umana ~5 cent), ma non certificabile con i parametri di precisione Rephase.';
-      certNote.style.display = 'block';
-      certNote.style.marginTop = '3px';
+      certVal.textContent = 'No';
+      certVal.style.color = '#a32d2d';
+      if (certNote) {
+        certNote.textContent = ' \u2014 scostamento residuo ' + pSign + h.postCents.toFixed(2) + ' cent, oltre la soglia \u00b15.0 cent. Percettivamente irrilevante (soglia uditiva umana ~5 cent), ma non certificabile con i parametri di precisione Rephase.';
+        certNote.style.display = 'block';
+        certNote.style.marginTop = '3px';
+      }
     }
   }
   set('tpc-passes', h.passes != null ? h.passes : '1');
