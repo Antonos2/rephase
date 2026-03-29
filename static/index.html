@@ -208,7 +208,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 }
 .spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
 .spectral-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
-.fft-dl-btn { background: none; border: 1px solid #c8c8c8; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 8px 0 4px; transition: border-color .15s, color .15s; display: block; }
+.fft-dl-btn { background: none; border: 1px solid #c8c8c8; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #1a1a1a; cursor: pointer; margin: 8px 0 4px; transition: border-color .15s, color .15s; display: block; }
 .fft-dl-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
 .fft-dl-progress { display: none; font-size: 13px; font-weight: 700; color: #34c759; padding: 6px 0 4px; font-family: 'SF Mono','Menlo',monospace; animation: rephase-pulse 0.75s ease-in-out infinite; letter-spacing: .04em; }
 .spectral-panel { background: #d0d0d0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
@@ -388,7 +388,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
             <tr><td>Certificato</td><td id="tpc-cert"><span id="tpc-cert-val">—</span><span id="tpc-cert-note" style="display:none;font-size:11px;color:#666;font-weight:400;"></span></td></tr>
           </table>
           <div style="margin-top:12px;">
-            <button onclick="this.nextElementSibling.classList.toggle('hidden');this.textContent=this.nextElementSibling.classList.contains('hidden')?'\u25bc Note':'\u25b2 Note'" style="background:none;border:none;font-size:11px;color:#666;cursor:pointer;padding:0;font-family:inherit;">&darr; Note</button>
+            <button onclick="this.nextElementSibling.classList.toggle('hidden');this.textContent=this.nextElementSibling.classList.contains('hidden')?'\u25bc Note':'\u25b2 Note'" style="background:none;border:none;font-size:11px;color:#1a1a1a;cursor:pointer;padding:0;font-family:inherit;">&darr; Note</button>
             <div class="hidden" style="margin-top:6px;font-family:'SF Mono','Fira Code','Menlo','Courier New',monospace;font-size:11px;color:#666;background:#c0c0c0;border-left:3px solid #888;padding:10px 12px;border-radius:0 6px 6px 0;line-height:1.6;">I formati M4A e AAC possono presentare un drift di pitch di &plusmn;0.09 cent rispetto a WAV/FLAC/MP3/AIFF dovuto alla compressione lossy AAC. Il valore &egrave; fisicamente impercettibile (soglia umana ~5 cent) e rientra ampiamente nella certificazione &plusmn;5 cent di Rephase.</div>
           </div>
         </div>
@@ -531,6 +531,7 @@ function renderSpectral(d, filename) {
   // Vertical reference lines as dense point arrays
   const vline = x => Array.from({length: 51}, (_, i) => ({x, y: i / 50}));
   if (fftChart) { fftChart.destroy(); fftChart = null; }
+  Chart.defaults.color = '#1a1a1a';
   const ctx = document.getElementById('fft-chart').getContext('2d');
   fftChart = new Chart(ctx, {
     type: 'scatter',
@@ -695,6 +696,7 @@ function renderSpectralConvert(origData, convData, h) {
   }
   const vline = x => Array.from({length: 51}, (_, i) => ({x, y: i / 50}));
   if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
+  Chart.defaults.color = '#1a1a1a';
   const ctx = document.getElementById('fft-chart-conv').getContext('2d');
   fftChartConv = new Chart(ctx, {
     type: 'scatter',
@@ -969,6 +971,7 @@ let _hzTimelineChart = null;
 
 function _initTimelineChart(durationSec) {
   if (_hzTimelineChart) { _hzTimelineChart.destroy(); _hzTimelineChart = null; }
+  Chart.defaults.color = '#1a1a1a';
   const ctx = document.getElementById('hz-timeline-canvas').getContext('2d');
   _hzTimelineChart = new Chart(ctx, {
     type: 'scatter',
