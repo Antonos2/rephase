@@ -1197,7 +1197,12 @@ document.getElementById('file-convert').addEventListener('change', async functio
     const postCents = parseFloat(res.headers.get('X-Post-Cents') || '0');
     const cSign = shiftCent >= 0 ? '+' : '';
     const pSign = postCents >= 0 ? '+' : '';
+    const trimmedSec = res.headers.get('X-Trimmed-Seconds');
+    const trimNote = trimmedSec
+      ? 'Conversione sui primi ' + trimmedSec + ' secondi — ottimale per la dimostrazione.\n'
+      : '';
     document.getElementById('cv-detail').textContent =
+      trimNote +
       'Prima: ' + preFreq.toFixed(1) + ' Hz  \u00b7  Shift applicato: ' + cSign + shiftCent.toFixed(1) + ' cent' +
       '\nDopo: ' + postFreq.toFixed(1) + ' Hz  \u00b7  Scostamento da 432 Hz: ' + pSign + postCents.toFixed(1) + ' cent';
     const blob = await res.blob();

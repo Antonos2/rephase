@@ -58,13 +58,14 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if analysis.get("is_432"):
         background_tasks.add_task(cleanup, tmp_in)
         return JSONResponse({"already_432": True, "peak_freq": analysis["peak_freq"], "cents_vs_432": analysis["cents_vs_432"], "message": "Il brano \u00e8 gi\u00e0 a 432 Hz \u2014 nessuna conversione necessaria."})
-    result = convert_to_432(tmp_in, tmp_out)
+    result = convert_to_432(tmp_in, tmp_out, max_seconds=90)
     background_tasks.add_task(cleanup, tmp_in)
     if not result["success"]: raise HTTPException(500, result.get("error","Errore"))
     background_tasks.add_task(cleanup, tmp_out)
     stem = Path(file.filename).stem
-    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes"
+    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes,X-Trimmed-Seconds"
     stats_headers = {
+        "X-Trimmed-Seconds": "90",
         "X-Pre-Freq":          str(round(result.get("pre_freq", 0), 4)),
         "X-Shift-Cents":       str(round(result.get("shift_applied", 0), 4)),
         "X-Post-Freq":         str(round(result.get("post_freq", 0), 4)),

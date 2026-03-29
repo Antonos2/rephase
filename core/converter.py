@@ -218,11 +218,11 @@ def analyze_file(input_path):
     finally:
         if os.path.exists(tmp_wav): os.remove(tmp_wav)
 
-def convert_to_432(input_path, output_path):
+def convert_to_432(input_path, output_path, max_seconds=None):
     tmp_in  = tempfile.mktemp(suffix=".wav")
     tmp_432 = tempfile.mktemp(suffix=".wav")
     try:
-        _load_as_wav(input_path, tmp_in, channels=2)
+        _load_as_wav(input_path, tmp_in, channels=2, max_seconds=max_seconds)
         samples, sr = _read_wav_samples(tmp_in)
         pre = _measure_a4(samples, sr)
         if not pre["success"]:
