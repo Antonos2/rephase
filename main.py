@@ -220,6 +220,42 @@ async def post_costs(payload: dict, _: None = Depends(_check_admin)):
     _cache["ts"] = 0.0  # invalidate metrics cache
     return JSONResponse({"ok": True})
 
+# ── Certification / Blockchain ─────────────────────────────────────────────
+
+@app.post("/certify")
+def certify_report(payload: dict):
+    """Compute SHA-256 of the report JSON and anchor it on Bitcoin via OriginStamp."""
+    import hashlib, json as _j, urllib.request, urllib.error
+
+    # Canonical JSON (sorted keys, no spaces) → deterministic hash
+    report_str  = _j.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    report_hash = hashlib.sha256(report_str.encode("utf-8")).hexdigest()
+
+    api_key = os.environ.get("ORIGINSTAMP_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"report_hash": report_hash, "originstamp": None,
+                             "warning": "ORIGINSTAMP_API_KEY non configurato — hash calcolato localmente."})
+
+    body = _j.dumps({
+        "hash":    report_hash,
+        "comment": f"Rephase: {payload.get('file', {}).get('name', 'audio')}",
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.originstamp.com/v4/timestamp/create",
+        data=body,
+        headers={"Authorization": f"Token {api_key}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            os_data = _j.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise HTTPException(502, f"OriginStamp HTTP {e.code}: {e.reason}")
+    except Exception as e:
+        raise HTTPException(502, f"OriginStamp error: {e}")
+
+    return JSONResponse({"report_hash": report_hash, "originstamp": os_data})
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)

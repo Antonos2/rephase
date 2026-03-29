@@ -90,6 +90,38 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   border-color: #1e8c3a; background: #f0f8f2; color: #1e8c3a;
 }
 .mode-btn:not(.active):hover { border-color: #999; color: #333; }
+/* ── Certificate section ── */
+.cert-gen-btn {
+  width: 100%; padding: 11px; margin: 4px 0 10px;
+  background: #1a1a1a; color: #fff; border: none; border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s;
+  letter-spacing: .01em;
+}
+.cert-gen-btn:hover { background: #333; }
+.cert-gen-btn:disabled { background: #888; cursor: default; }
+.cert-json {
+  background: #0d1117; color: #58d68d; font-family: 'SF Mono','Fira Code','Menlo',monospace;
+  font-size: 10.5px; line-height: 1.55; border-radius: 10px; padding: 14px 16px;
+  overflow-x: auto; white-space: pre; margin: 8px 0; max-height: 340px;
+  overflow-y: auto; border: 1px solid #2a2a2a;
+}
+.cert-chain-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: #f0f8f2; border: 1px solid #c3e6cb; border-radius: 10px;
+  margin: 6px 0; font-size: 12px;
+}
+.cert-chain-row.warn { background: #fffbf0; border-color: #ffe08a; }
+.cert-chain-row.err  { background: #fff5f5; border-color: #f5c6c6; }
+.cert-chain-icon { font-size: 18px; flex-shrink: 0; }
+.cert-chain-text { flex: 1; }
+.cert-chain-text strong { display: block; font-weight: 700; color: #1a1a1a; }
+.cert-chain-text span   { color: #444; font-family: monospace; font-size: 11px; word-break: break-all; }
+.cert-dl-btn {
+  background: none; border: 1.5px solid #1a1a1a; border-radius: 980px;
+  padding: 6px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: all .15s; margin-top: 4px;
+}
+.cert-dl-btn:hover { background: #1a1a1a; color: #fff; }
 /* ── Hz timeline chart ── */
 .hz-timeline-section {
   margin: 12px 0 8px; background: #f7f7f7; border-radius: 10px;
@@ -268,6 +300,17 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
           </div>
           <div style="position:relative;height:150px;">
             <canvas id="hz-timeline-canvas"></canvas>
+          </div>
+        </div>
+        <!-- Certificate & blockchain anchoring -->
+        <div id="cert-section" class="hidden">
+          <button class="cert-gen-btn" id="cert-gen-btn" onclick="generateCertificate()">
+            Certifica questo brano &amp; Registra su Blockchain →
+          </button>
+          <div id="cert-panel" class="hidden">
+            <div id="cert-chain-status"></div>
+            <pre class="cert-json" id="cert-json"></pre>
+            <button class="cert-dl-btn" onclick="downloadCertificate()">↓ Scarica certificato JSON</button>
           </div>
         </div>
         <button id="btn-spectral" class="spectral-btn hidden" onclick="toggleSpectral()">Analisi spettrale ↓</button>
@@ -614,6 +657,171 @@ function tubeError(msg){clearInterval(convTimer);const st=document.getElementByI
     document.getElementById(inputId).dispatchEvent(new Event('change'));
   });
 });
+// ── Certification ─────────────────────────────────────────────────────────
+let _certFile        = null;
+let _certResult      = null;
+let _certStartTime   = null;
+let _certEndTime     = null;
+let _certReportJSON  = null;
+
+/** Return current time as ISO string in Europe/Zurich with offset. */
+function _zurichISO() {
+  const d    = new Date();
+  const fmtZ = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Zurich', year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit',
+    fractionalSecondDigits: 3, hour12: false
+  });
+  const parts = Object.fromEntries(fmtZ.formatToParts(d).map(p => [p.type, p.value]));
+  // Compute Zurich UTC offset
+  const utcD    = new Date(d.toLocaleString('en-US', {timeZone:'UTC'}));
+  const zurichD = new Date(d.toLocaleString('en-US', {timeZone:'Europe/Zurich'}));
+  const offMin  = Math.round((zurichD - utcD) / 60000);
+  const sign    = offMin >= 0 ? '+' : '-';
+  const oh      = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
+  const om      = String(Math.abs(offMin) % 60).padStart(2, '0');
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${parts.fractionalSecond}${sign}${oh}:${om}`;
+}
+
+/** SHA-256 of an ArrayBuffer → hex string (Web Crypto API). */
+async function _sha256hex(buffer) {
+  const hash = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+/** Pick n items at random from arr (preserving time order in output). */
+function _pickRandom(arr, n) {
+  const copy = arr.filter(w => w.a4 !== null);
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, n).sort((a, b) => a.time - b.time);
+}
+
+function _centsVs432(hz) {
+  return hz ? Math.round(1200 * Math.log2(hz / 432.0) * 100) / 100 : null;
+}
+
+async function generateCertificate() {
+  if (!_certResult || !_certFile) return;
+  const btn = document.getElementById('cert-gen-btn');
+  btn.disabled = true;
+  btn.textContent = 'Calcolo SHA-256 e registrazione…';
+
+  const buf      = await _certFile.arrayBuffer();
+  const fileHash = await _sha256hex(buf);
+
+  const d      = _certResult;
+  const pw     = d.per_window || [];
+  const samples = _pickRandom(pw, Math.min(5, pw.length));
+
+  const report = {
+    rephase_version: '1.0.0',
+    report_type:     'blind_test_certification',
+    file: {
+      name:       _certFile.name,
+      size_bytes: _certFile.size,
+      sha256:     fileHash,
+    },
+    analysis: {
+      mode:                 _analysisMode,
+      start_time:           _certStartTime,
+      end_time:             _certEndTime,
+      duration_analyzed_sec: d.duration_analyzed ?? null,
+      total_windows:        20,
+    },
+    blind_samples: samples.map((s, i) => ({
+      sample:     i + 1,
+      window_idx: s.idx,
+      time_sec:   s.time,
+      a4_hz:      s.a4,
+      cents_vs_432: _centsVs432(s.a4),
+    })),
+    statistics: {
+      peak_freq_hz:  d.peak_freq,
+      mean_hz:       d.mean_hz ?? null,
+      std_dev_hz:    d.std_dev_hz ?? null,
+      cents_vs_432:  d.cents_vs_432,
+      is_432:        d.is_432,
+      verdict:       d.verdict,
+    },
+  };
+
+  _certReportJSON = report;
+  const jsonStr = JSON.stringify(report, null, 2);
+  document.getElementById('cert-json').textContent = jsonStr;
+  document.getElementById('cert-panel').classList.remove('hidden');
+
+  // Call /certify backend
+  btn.textContent = 'Registrazione su blockchain…';
+  try {
+    const resp = await fetch('/certify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: jsonStr,
+    });
+    const data = await resp.json();
+    _renderChainStatus(data);
+  } catch (e) {
+    _renderChainStatus({error: String(e)});
+  }
+
+  btn.textContent = 'Rigenera certificato';
+  btn.disabled = false;
+}
+
+function _renderChainStatus(data) {
+  const el = document.getElementById('cert-chain-status');
+  if (data.error) {
+    el.innerHTML = `<div class="cert-chain-row err">
+      <span class="cert-chain-icon">⚠</span>
+      <div class="cert-chain-text"><strong>Errore blockchain</strong><span>${data.error}</span></div>
+    </div>`;
+    return;
+  }
+  const hash = data.report_hash || '';
+  let html = `<div class="cert-chain-row">
+    <span class="cert-chain-icon">🔐</span>
+    <div class="cert-chain-text">
+      <strong>SHA-256 del certificato</strong>
+      <span>${hash}</span>
+    </div>
+  </div>`;
+  if (data.warning) {
+    html += `<div class="cert-chain-row warn">
+      <span class="cert-chain-icon">ℹ</span>
+      <div class="cert-chain-text"><strong>Blockchain non configurata</strong>
+        <span>${data.warning} — Puoi ancorare manualmente l'hash su originstamp.com</span></div>
+    </div>`;
+  } else if (data.originstamp) {
+    const os   = data.originstamp;
+    const osD  = os.data || {};
+    const status = osD.submit_status === 0 ? 'In attesa di conferma Bitcoin (~24h)' :
+                   osD.submit_status === 1 ? 'Ancorato su Bitcoin ✓' : 'Inviato';
+    html += `<div class="cert-chain-row">
+      <span class="cert-chain-icon">₿</span>
+      <div class="cert-chain-text">
+        <strong>OriginStamp — ${status}</strong>
+        <span>Hash: ${osD.hash_string || hash}</span>
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function downloadCertificate() {
+  if (!_certReportJSON) return;
+  const blob = new Blob([JSON.stringify(_certReportJSON, null, 2)],
+                        {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (_certFile ? _certFile.name.replace(/\.[^.]+$/, '') : 'rephase') +
+               '_certificate.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // ── Analysis mode ─────────────────────────────────────────────────────────
 let _analysisMode = 'quick'; // 'quick' | 'full'
 function setAnalysisMode(mode) {
@@ -807,10 +1015,23 @@ document.getElementById('file-verify').addEventListener('change', async function
   const file = this.files[0];
   if (!file) return;
 
+  // Store for certificate generation
+  _certFile       = file;
+  _certResult     = null;
+  _certStartTime  = _zurichISO();
+  _certEndTime    = null;
+  _certReportJSON = null;
+
   // Reset UI
   document.getElementById('result-verify').classList.add('hidden');
   document.getElementById('hz-timeline-section').classList.add('hidden');
   document.getElementById('hz-timeline-stats').textContent = '';
+  document.getElementById('cert-section').classList.add('hidden');
+  document.getElementById('cert-panel').classList.add('hidden');
+  document.getElementById('cert-chain-status').innerHTML = '';
+  document.getElementById('cert-json').textContent = '';
+  document.getElementById('cert-gen-btn').disabled = false;
+  document.getElementById('cert-gen-btn').textContent = 'Certifica questo brano \u0026 Registra su Blockchain \u2192';
   document.getElementById('rv-detail').textContent = '';
   document.getElementById('btn-spectral').classList.add('hidden');
   document.getElementById('spectral-panel').classList.add('hidden');
@@ -891,6 +1112,8 @@ document.getElementById('file-verify').addEventListener('change', async function
       _updateTimeline(msg);
     } else if (msg.type === 'done') {
       const d = msg.result;
+      _certResult   = d;
+      _certEndTime  = _zurichISO();
       _finalizeLiveChart(d);
       _finalizeTimeline(d);
       st.className = 'status';
@@ -918,6 +1141,7 @@ document.getElementById('file-verify').addEventListener('change', async function
       }
       document.getElementById('rv-detail').textContent = detail;
       document.getElementById('result-verify').classList.remove('hidden');
+      document.getElementById('cert-section').classList.remove('hidden');
       renderSpectral(d, file.name);
     } else if (msg.type === 'error') {
       st.textContent = 'Errore: ' + msg.error;
