@@ -371,6 +371,10 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div style="font-size:11px;color:#1e8c3a;margin-top:12px;">File cancellato dai server entro 60 secondi.</div>
         <button id="btn-spectral-conv" class="spectral-btn hidden" style="margin-top:10px;" onclick="toggleSpectralConv()">Analisi spettrale ↓</button>
         <div id="spectral-panel-conv" class="spectral-panel hidden" style="text-align:left;margin-top:8px;">
+          <div id="spectral-conv-loading" class="hidden" style="padding:24px 0;text-align:center;">
+            <div class="fft-dl-progress" id="spectral-conv-pct" style="display:block;font-size:15px;margin-bottom:6px;">● 0%</div>
+            <div style="font-size:11px;color:#555;" id="spectral-conv-label">Generazione spettro FFT in corso...</div>
+          </div>
           <div class="spectral-chart-wrap"><canvas id="fft-chart-conv"></canvas></div>
           <div class="fft-dl-progress" id="fft-dl-progress-conv">● 0%</div>
           <button class="fft-dl-btn" id="fft-dl-btn-conv" onclick="downloadFftChart('conv')">↓ Scarica grafico FFT</button>
@@ -568,14 +572,38 @@ function renderSpectral(d, filename) {
   document.getElementById('btn-spectral').classList.remove('hidden');
 }
 async function toggleSpectralConv() {
-  const panel = document.getElementById('spectral-panel-conv');
-  const btn   = document.getElementById('btn-spectral-conv');
-  const open  = panel.classList.contains('hidden');
+  const panel   = document.getElementById('spectral-panel-conv');
+  const btn     = document.getElementById('btn-spectral-conv');
+  const loading = document.getElementById('spectral-conv-loading');
+  const pctEl   = document.getElementById('spectral-conv-pct');
+  const labelEl = document.getElementById('spectral-conv-label');
+  const open    = panel.classList.contains('hidden');
   panel.classList.toggle('hidden', !open);
   btn.textContent = open ? 'Analisi spettrale \u2191' : 'Analisi spettrale \u2193';
+
   if (open && !fftChartConv && convertOrigFile && convertBlob) {
-    btn.textContent = 'Caricamento spettri...';
     btn.disabled = true;
+    // Show loading indicator, hide chart canvas
+    loading.classList.remove('hidden');
+    document.getElementById('fft-chart-conv').style.visibility = 'hidden';
+    document.getElementById('fft-dl-btn-conv').style.display = 'none';
+
+    // Animate progress while waiting for /verify responses
+    let pct = 0;
+    const phases = [
+      {target: 30, label: 'Analisi spettro originale...'},
+      {target: 60, label: 'Analisi spettro convertito...'},
+      {target: 85, label: 'Generazione grafico FFT...'},
+    ];
+    let phaseIdx = 0;
+    const ticker = setInterval(() => {
+      if (phaseIdx < phases.length && pct >= phases[phaseIdx].target - 1) phaseIdx++;
+      const target = phaseIdx < phases.length ? phases[phaseIdx]?.target ?? 85 : 85;
+      pct = Math.min(pct + Math.random() * 3 + 1, target);
+      pctEl.textContent   = '\u25cf ' + Math.round(pct) + '%';
+      if (phaseIdx < phases.length) labelEl.textContent = phases[phaseIdx].label;
+    }, 120);
+
     try {
       const convFmt = convertBlob.type.includes('mp4') ? 'm4a' : 'mp3';
       const fd1 = new FormData(); fd1.append('file', convertOrigFile);
@@ -589,15 +617,34 @@ async function toggleSpectralConv() {
       const [origData, convData] = await Promise.all([r1.json(), r2.json()]);
       if (!origData.success) throw new Error('Verify originale: ' + (origData.error || 'errore sconosciuto'));
       if (!convData.success) throw new Error('Verify convertito: ' + (convData.error || 'errore sconosciuto'));
+
+      // Sprint to 100%
+      clearInterval(ticker);
+      labelEl.textContent = 'Rendering grafico...';
+      while (pct < 100) {
+        pct = Math.min(pct + 5, 100);
+        pctEl.textContent = '\u25cf ' + Math.round(pct) + '%';
+        await new Promise(r => setTimeout(r, 20));
+      }
+      await new Promise(r => setTimeout(r, 150));
+
+      loading.classList.add('hidden');
+      document.getElementById('fft-chart-conv').style.visibility = '';
       renderSpectralConvert(origData, convData, convertHeaders);
       btn.textContent = 'Analisi spettrale \u2191';
+      document.getElementById('fft-dl-btn-conv').style.display = '';
     } catch(e) {
+      clearInterval(ticker);
+      loading.classList.add('hidden');
+      document.getElementById('fft-chart-conv').style.visibility = '';
       btn.textContent = 'Analisi spettrale \u2193';
-      const panel = document.getElementById('spectral-panel-conv');
       panel.insertAdjacentHTML('afterbegin',
         '<div style="font-size:11px;color:#a32d2d;padding:8px 0;">\u26a0 ' + e.message + '</div>');
     }
     btn.disabled = false;
+    // Reset progress for next time
+    pct = 0; pctEl.textContent = '\u25cf 0%';
+    labelEl.textContent = 'Generazione spettro FFT in corso...';
   }
 }
 function renderSpectralConvert(origData, convData, h) {
