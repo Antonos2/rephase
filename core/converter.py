@@ -86,30 +86,33 @@ def _measure_a4(samples, sr):
 
 def _measure_a4_streaming(samples, sr):
     """Generator: yield per-window FFT data (200-600 Hz) as analysis converges.
-    Final yield is {"type":"done","result":{...full _measure_a4 output...}}.
-    Pacing: ~120 ms sleep between windows for smooth 150 ms visual cadence.
-    Data is scientifically real — accumulated average spectrum per window.
+    Each window message includes an independent A4 estimate and timestamp.
+    Final yield is {"type":"done","result":{...}} with per_window stats.
     """
     import time
 
     DISP_MIN, DISP_MAX, DISP_PTS = 200.0, 600.0, 250
+    total_samples  = len(samples)
+    duration_sec   = total_samples / sr
+
     positions = np.linspace(
-        WINDOW_SIZE, max(WINDOW_SIZE + 1, len(samples) - WINDOW_SIZE), N_WINDOWS
+        WINDOW_SIZE, max(WINDOW_SIZE + 1, total_samples - WINDOW_SIZE), N_WINDOWS
     ).astype(int)
 
-    spec_acc  = None
-    Fm_ref    = None
-    spec_cnt  = 0
-    votes     = []
-    res       = None
+    spec_acc       = None
+    Fm_ref         = None
+    spec_cnt       = 0
+    acc_votes      = []   # accumulated across windows → running a4_est
+    per_window_data = []
+    res            = None
 
     for i, pos in enumerate(positions):
         chunk = samples[pos : pos + WINDOW_SIZE]
         if len(chunk) < WINDOW_SIZE:
             continue
 
-        S  = np.abs(rfft(chunk * np.hanning(WINDOW_SIZE)))
-        F  = rfftfreq(WINDOW_SIZE, 1.0 / sr)
+        S   = np.abs(rfft(chunk * np.hanning(WINDOW_SIZE)))
+        F   = rfftfreq(WINDOW_SIZE, 1.0 / sr)
         res = float(F[1] - F[0])
 
         mask = (F >= 50) & (F <= 2000)
@@ -121,7 +124,8 @@ def _measure_a4_streaming(samples, sr):
             spec_acc = spec_acc + Sm
         spec_cnt += 1
 
-        # Peak detection → A4 votes
+        # Peak detection — used for both per-window and accumulated estimates
+        win_votes = []
         if Sm.max() > 0:
             peaks, _ = find_peaks(Sm, height=Sm.max() * 0.01,
                                   distance=int(20 / res))
@@ -134,33 +138,56 @@ def _measure_a4_streaming(samples, sr):
                     while f4 < A4_MIN: f4 *= 2
                     while f4 > A4_MAX: f4 /= 2
                     if A4_MIN <= f4 <= A4_MAX:
-                        votes.append((f4, float(amp)))
+                        win_votes.append((f4, float(amp)))
+                        acc_votes.append((f4, float(amp)))
 
-        # Current A4 estimate (amplitude-weighted)
+        # Independent per-window A4 estimate
+        window_a4 = None
+        if win_votes:
+            fv = np.array([v[0] for v in win_votes])
+            av = np.array([v[1] for v in win_votes])
+            window_a4 = round(float(np.average(fv, weights=av)), 3)
+
+        timestamp = round(float(pos / sr), 2)
+        per_window_data.append({"idx": i, "time": timestamp, "a4": window_a4})
+
+        # Accumulated A4 estimate (running average across all windows so far)
         a4_est = None
-        if votes:
-            fv = np.array([v[0] for v in votes])
-            av = np.array([v[1] for v in votes])
+        if acc_votes:
+            fv = np.array([v[0] for v in acc_votes])
+            av = np.array([v[1] for v in acc_votes])
             a4_est = float(np.average(fv, weights=av))
 
         # Display spectrum: accumulated average, 200-600 Hz, fixed grid
-        S_avg  = spec_acc / spec_cnt
+        S_avg   = spec_acc / spec_cnt
         t_freqs = np.linspace(DISP_MIN, DISP_MAX, DISP_PTS)
         S_disp  = np.interp(t_freqs, Fm_ref, S_avg)
         peak_v  = S_disp.max()
         S_norm  = S_disp / peak_v if peak_v > 0 else S_disp
 
         yield {
-            "type": "window",
-            "window_idx": i,
+            "type":          "window",
+            "window_idx":    i,
             "total_windows": N_WINDOWS,
-            "freqs": [round(float(f), 2) for f in t_freqs],
-            "amps":  [round(float(a), 4) for a in S_norm],
-            "a4_estimate": round(a4_est, 3) if a4_est is not None else None,
+            "freqs":         [round(float(f), 2) for f in t_freqs],
+            "amps":          [round(float(a), 4) for a in S_norm],
+            "a4_estimate":   round(a4_est, 3) if a4_est is not None else None,
+            "window_a4":     window_a4,
+            "timestamp":     timestamp,
+            "duration_sec":  round(duration_sec, 2),
         }
-        time.sleep(0.12)   # ~120 ms pacing → ~150 ms cadence per frame
+        time.sleep(0.12)
 
     result = _measure_a4(samples, sr)
+    result["per_window"]       = per_window_data
+    result["duration_analyzed"] = round(duration_sec, 2)
+    valid = [d["a4"] for d in per_window_data if d["a4"] is not None]
+    if len(valid) >= 2:
+        result["std_dev_hz"]  = round(float(np.std(valid)), 4)
+        result["mean_hz"]     = round(float(np.mean(valid)), 4)
+    else:
+        result["std_dev_hz"]  = None
+        result["mean_hz"]     = None
     yield {"type": "done", "result": result}
 
 

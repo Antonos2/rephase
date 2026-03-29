@@ -77,6 +77,34 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 @keyframes rephase-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.75;transform:scale(1.04);}}
 .logo{animation:rephase-pulse 2.8s ease-in-out infinite;}
 .status.processing { color: #1e8c3a; font-weight: 600; animation: rephase-pulse 1.8s ease-in-out infinite; }
+/* ── Analysis mode toggle ── */
+.analysis-mode-toggle {
+  display: flex; gap: 6px; margin-bottom: 12px;
+}
+.mode-btn {
+  flex: 1; padding: 7px 10px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid #c8c8c8; border-radius: 980px; background: #fff;
+  color: #555; cursor: pointer; transition: all .15s;
+}
+.mode-btn.active {
+  border-color: #1e8c3a; background: #f0f8f2; color: #1e8c3a;
+}
+.mode-btn:not(.active):hover { border-color: #999; color: #333; }
+/* ── Hz timeline chart ── */
+.hz-timeline-section {
+  margin: 12px 0 8px; background: #f7f7f7; border-radius: 10px;
+  padding: 12px 14px 10px; border: 1px solid #e8e8e8;
+}
+.hz-timeline-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 8px;
+}
+.hz-timeline-title {
+  font-size: 12px; font-weight: 700; color: #1a1a1a; letter-spacing: .02em;
+}
+.hz-timeline-stats {
+  font-size: 11px; color: #444; font-family: 'SF Mono','Menlo',monospace;
+}
 /* ── Upload progress ── */
 .upload-progress-wrap {
   display: none; margin: 10px 0 4px; padding: 10px 14px;
@@ -178,6 +206,10 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       <div class="tab" onclick="switchTab('convert')" id="tab-convert-btn">Converti a 432 Hz</div>
     </div>
     <div class="tab-content active" id="tab-verify">
+      <div class="analysis-mode-toggle">
+        <button class="mode-btn active" id="mode-btn-quick" onclick="setAnalysisMode('quick')">Analisi rapida (90s)</button>
+        <button class="mode-btn" id="mode-btn-full" onclick="setAnalysisMode('full')">Analisi completa (intero brano)</button>
+      </div>
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
       <div class="drop-area" id="drop-area-verify" onclick="document.getElementById('file-verify').click()">
         <div class="drop-title">Trascina il tuo file audio</div>
@@ -228,6 +260,16 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
           <div class="verdict-text" id="rv-text">—</div>
         </div>
         <div id="rv-detail" style="font-size:11px;color:#444;margin:-12px 0 12px 0;padding:0 4px;line-height:1.7;"></div>
+        <!-- Hz timeline chart (always built, shown when data available) -->
+        <div class="hz-timeline-section hidden" id="hz-timeline-section">
+          <div class="hz-timeline-header">
+            <span class="hz-timeline-title">Frequenza rilevata per finestra nel tempo</span>
+            <span class="hz-timeline-stats" id="hz-timeline-stats"></span>
+          </div>
+          <div style="position:relative;height:150px;">
+            <canvas id="hz-timeline-canvas"></canvas>
+          </div>
+        </div>
         <button id="btn-spectral" class="spectral-btn hidden" onclick="toggleSpectral()">Analisi spettrale ↓</button>
         <div id="spectral-panel" class="spectral-panel hidden">
           <div class="spectral-chart-wrap"><canvas id="fft-chart"></canvas></div>
@@ -572,6 +614,88 @@ function tubeError(msg){clearInterval(convTimer);const st=document.getElementByI
     document.getElementById(inputId).dispatchEvent(new Event('change'));
   });
 });
+// ── Analysis mode ─────────────────────────────────────────────────────────
+let _analysisMode = 'quick'; // 'quick' | 'full'
+function setAnalysisMode(mode) {
+  _analysisMode = mode;
+  document.getElementById('mode-btn-quick').classList.toggle('active', mode === 'quick');
+  document.getElementById('mode-btn-full').classList.toggle('active', mode === 'full');
+}
+
+// ── Hz Timeline Chart ─────────────────────────────────────────────────────
+let _hzTimelineChart = null;
+
+function _initTimelineChart(durationSec) {
+  if (_hzTimelineChart) { _hzTimelineChart.destroy(); _hzTimelineChart = null; }
+  const ctx = document.getElementById('hz-timeline-canvas').getContext('2d');
+  _hzTimelineChart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [
+      { label: '432 Hz', data: [{x:0,y:432},{x:durationSec||1,y:432}],
+        showLine:true, borderColor:'rgba(52,199,89,.55)', borderWidth:1.5,
+        borderDash:[6,4], pointRadius:0, order:3 },
+      { label: '440 Hz', data: [{x:0,y:440},{x:durationSec||1,y:440}],
+        showLine:true, borderColor:'rgba(255,149,0,.55)', borderWidth:1.5,
+        borderDash:[6,4], pointRadius:0, order:3 },
+      { label: 'A4 per finestra', data: [],
+        showLine:true, borderColor:'#1a1a1a', backgroundColor:'#1e8c3a',
+        borderWidth:1.5, pointRadius:5, pointHoverRadius:7,
+        tension:0.2, order:1 },
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins: {
+        legend:{ display:false },
+        tooltip:{ callbacks:{
+          label: (ctx) => ctx.datasetIndex===2
+            ? `  ${ctx.parsed.x.toFixed(1)}s → ${ctx.parsed.y.toFixed(2)} Hz` : null
+        }}
+      },
+      scales: {
+        x: { type:'linear', min:0, max:durationSec||1,
+             title:{ display:true, text:'Tempo (s)', color:'#666', font:{size:10} },
+             ticks:{ color:'#666', font:{size:10} },
+             grid:{ color:'rgba(0,0,0,.07)' } },
+        y: { min:424, max:448,
+             title:{ display:true, text:'Hz', color:'#666', font:{size:10} },
+             ticks:{ color:'#666', font:{size:10},
+                     callback: v => v + ' Hz' },
+             grid:{ color:'rgba(0,0,0,.07)' } },
+      }
+    }
+  });
+}
+
+function _updateTimeline(msg) {
+  if (!msg.window_a4 || !_hzTimelineChart) return;
+  // Update reference lines to span full duration
+  const dur = msg.duration_sec || 1;
+  _hzTimelineChart.data.datasets[0].data = [{x:0,y:432},{x:dur,y:432}];
+  _hzTimelineChart.data.datasets[1].data = [{x:0,y:440},{x:dur,y:440}];
+  _hzTimelineChart.options.scales.x.max = dur;
+  _hzTimelineChart.data.datasets[2].data.push({ x: msg.timestamp, y: msg.window_a4 });
+  _hzTimelineChart.update('none');
+  document.getElementById('hz-timeline-section').classList.remove('hidden');
+}
+
+function _finalizeTimeline(result) {
+  if (!result.per_window) return;
+  const dur = result.duration_analyzed || 0;
+  const std = result.std_dev_hz;
+  const mean = result.mean_hz;
+  let statsText = '';
+  if (dur) {
+    const m = Math.floor(dur/60), s = Math.round(dur%60);
+    statsText += `Durata: ${m>0?m+'m ':''  }${s}s`;
+  }
+  if (std !== null && std !== undefined) {
+    statsText += `  ·  σ = ${std.toFixed(3)} Hz`;
+    const stability = std < 0.5 ? '● stabile' : std < 2 ? '● variabile' : '● instabile';
+    statsText += `  ${stability}`;
+  }
+  document.getElementById('hz-timeline-stats').textContent = statsText;
+}
+
 // ── FFT Live Visualizer ────────────────────────────────────────────────────
 let _fftLiveChart = null;
 const _fftDarkBg = {
@@ -685,6 +809,8 @@ document.getElementById('file-verify').addEventListener('change', async function
 
   // Reset UI
   document.getElementById('result-verify').classList.add('hidden');
+  document.getElementById('hz-timeline-section').classList.add('hidden');
+  document.getElementById('hz-timeline-stats').textContent = '';
   document.getElementById('rv-detail').textContent = '';
   document.getElementById('btn-spectral').classList.add('hidden');
   document.getElementById('spectral-panel').classList.add('hidden');
@@ -696,6 +822,7 @@ document.getElementById('file-verify').addEventListener('change', async function
   document.getElementById('fft-live-hz').innerHTML = '— <small>Hz</small>';
   document.getElementById('fft-live-hz').style.color = '#34c759';
   document.getElementById('fft-win-counter').textContent = 'Analisi in corso... finestra 0 di 20';
+  if (_hzTimelineChart) { _hzTimelineChart.destroy(); _hzTimelineChart = null; }
 
   const st = document.getElementById('status-verify');
   const wrap = document.getElementById('fft-live-wrap');
@@ -709,9 +836,14 @@ document.getElementById('file-verify').addEventListener('change', async function
   // Show upload bar immediately
   uploadFill.style.width = '0%';
   uploadLabel.textContent = 'Caricamento file... 0%';
-  uploadNotice.textContent = file.size > BIG_FILE
-    ? 'File grande \u2014 verr\u00e0 analizzato solo i primi 90 secondi.'
-    : '';
+  const isFull = _analysisMode === 'full';
+  if (file.size > BIG_FILE && !isFull) {
+    uploadNotice.textContent = 'File grande \u2014 verranno analizzati solo i primi 90 secondi. Usa \u201cAnalisi completa\u201d per l\u2019intero brano.';
+  } else if (isFull) {
+    uploadNotice.textContent = 'Modalit\u00e0 analisi completa \u2014 le 20 finestre coprono l\u2019intero brano.';
+  } else {
+    uploadNotice.textContent = '';
+  }
   uploadWrap.style.display = 'block';
   wrap.style.display = 'none';
 
@@ -724,7 +856,7 @@ document.getElementById('file-verify').addEventListener('change', async function
   ws.onopen = async () => {
     const buf = await file.arrayBuffer();
     const CHUNK = 512 * 1024; // 512 KB per chunk
-    ws.send(JSON.stringify({ filename: file.name, total_size: buf.byteLength }));
+    ws.send(JSON.stringify({ filename: file.name, total_size: buf.byteLength, full_analysis: isFull }));
 
     let offset = 0;
     while (offset < buf.byteLength) {
@@ -747,17 +879,20 @@ document.getElementById('file-verify').addEventListener('change', async function
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'window') {
-      // First window: switch from upload bar to FFT canvas
+      // First window: init charts and switch panels
       if (uploadWrap.style.display !== 'none') {
         uploadWrap.style.display = 'none';
         wrap.style.display = 'block';
         _initLiveChart();
+        _initTimelineChart(msg.duration_sec || 1);
         st.textContent = 'Analisi in corso...';
       }
       _updateLiveChart(msg);
+      _updateTimeline(msg);
     } else if (msg.type === 'done') {
       const d = msg.result;
       _finalizeLiveChart(d);
+      _finalizeTimeline(d);
       st.className = 'status';
       const ok = d.is_432;
       const cSign = d.cents_vs_432 >= 0 ? '+' : '';
@@ -767,9 +902,20 @@ document.getElementById('file-verify').addEventListener('change', async function
       document.getElementById('rv-verdict').className = 'verdict' + (ok ? '' : ' fail');
       document.getElementById('rv-dot').className = 'verdict-dot' + (ok ? '' : ' gray');
       document.getElementById('rv-text').textContent = ok ? 'Certificato a 432 Hz \u2713' : 'Questo brano NON \u00e8 a 432 Hz';
-      const detail = ok
-        ? 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent  \u00b7  Analisi su ' + d.n_votes + ' finestre'
-        : 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
+      // Build detail line with per-window stats
+      const dur = d.duration_analyzed;
+      const std = d.std_dev_hz;
+      let detail = 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent';
+      if (!ok) detail += ' da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
+      else     detail += '  \u00b7  Analisi su ' + d.n_votes + ' finestre';
+      if (dur) {
+        const m = Math.floor(dur/60), s = Math.round(dur%60);
+        detail += '  \u00b7  Durata analizzata: ' + (m>0?m+'m ':'')+s+'s';
+      }
+      if (std !== null && std !== undefined) {
+        const stability = std < 0.5 ? 'frequenza stabile' : std < 2 ? 'lieve variazione' : 'frequenza instabile';
+        detail += '  \u00b7  \u03c3 = ' + std.toFixed(3) + ' Hz (' + stability + ')';
+      }
       document.getElementById('rv-detail').textContent = detail;
       document.getElementById('result-verify').classList.remove('hidden');
       renderSpectral(d, file.name);
