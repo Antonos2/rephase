@@ -164,8 +164,12 @@ def _measure_a4_streaming(samples, sr):
     yield {"type": "done", "result": result}
 
 
-def _load_as_wav(input_path, tmp_wav, channels=1):
-    subprocess.run(["ffmpeg","-y","-i",input_path,"-ac",str(channels),"-ar",str(SR_ANALYSIS),"-c:a","pcm_s16le",tmp_wav,"-loglevel","error"], check=True, capture_output=True)
+def _load_as_wav(input_path, tmp_wav, channels=1, max_seconds=None):
+    cmd = ["ffmpeg", "-y", "-i", input_path]
+    if max_seconds is not None:
+        cmd += ["-t", str(max_seconds)]
+    cmd += ["-ac", str(channels), "-ar", str(SR_ANALYSIS), "-c:a", "pcm_s16le", tmp_wav, "-loglevel", "error"]
+    subprocess.run(cmd, check=True, capture_output=True)
 
 def _read_wav_samples(wav_path):
     with wave.open(wav_path,"rb") as wf:

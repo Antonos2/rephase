@@ -114,7 +114,7 @@ async def ws_analyze(websocket: WebSocket):
         if ext not in ALLOWED:
             await websocket.send_json({"type": "error", "error": f"Formato non supportato: {ext}"})
             return
-        file_bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=60)
+        file_bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=300)
         if len(file_bytes) > MAX_SIZE:
             await websocket.send_json({"type": "error", "error": "File troppo grande"})
             return
@@ -134,7 +134,7 @@ async def ws_analyze(websocket: WebSocket):
         from core.converter import _load_as_wav, _read_wav_samples, _measure_a4_streaming
         tmp_wav = tempfile.mktemp(suffix=".wav")
         try:
-            _load_as_wav(tmp, tmp_wav, channels=1)
+            _load_as_wav(tmp, tmp_wav, channels=1, max_seconds=90)
             samples, sr = _read_wav_samples(tmp_wav)
             for msg in _measure_a4_streaming(samples, sr):
                 asyncio.run_coroutine_threadsafe(queue.put(msg), loop).result()

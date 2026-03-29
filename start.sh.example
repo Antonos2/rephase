@@ -9,4 +9,4 @@ export STRIPE_SECRET_KEY="sk_live_INSERISCI_QUI_LA_TUA_CHIAVE"
 export ADMIN_PASSWORD="SCEGLI_UNA_PASSWORD_SICURA"
 export ADMIN_FIXED_COSTS_CHF="0"
 
-exec uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+exec uvicorn main:app --host 0.0.0.0 --port 8080 --reload --ws-max-size 536870912
