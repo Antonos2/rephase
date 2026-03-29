@@ -610,8 +610,18 @@ function renderSpectralConvert(origData, convData, h) {
     options: {
       responsive:true, maintainAspectRatio:false,
       plugins: {
-        title: { display:true, text:'Spettro FFT \u2014 confronto pre/post conversione',
-                 font:{size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:10} },
+        title: {
+          display: true,
+          text: 'Spettro FFT \u2014 confronto pre/post conversione',
+          font: {size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:2}
+        },
+        subtitle: {
+          display: !!(h.filename),
+          text: h.filename
+            ? h.filename + '  \u00b7  ' + (h.displayTime||'') + '  \u00b7  SHA256\u202f:\u202f' + (h.sha256Short||'')
+            : '',
+          font: {size:10, weight:'400'}, color:'#555', padding:{bottom:10}
+        },
         legend: { display:true, position:'bottom',
                   labels:{font:{size:10}, color:'#444', boxWidth:20, padding:10} }
       },
@@ -681,6 +691,23 @@ function _zurichISO() {
   const oh      = String(Math.floor(Math.abs(offMin) / 60)).padStart(2, '0');
   const om      = String(Math.abs(offMin) % 60).padStart(2, '0');
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${parts.fractionalSecond}${sign}${oh}:${om}`;
+}
+
+/** Human-readable Zurich datetime: "29 marzo 2026 · 21:25 CET" */
+function _zurichDisplayLine() {
+  const d = new Date();
+  const datePart = d.toLocaleDateString('it-IT', {
+    timeZone: 'Europe/Zurich', day: 'numeric', month: 'long', year: 'numeric'
+  });
+  const timePart = d.toLocaleTimeString('it-IT', {
+    timeZone: 'Europe/Zurich', hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  // CET (+1) vs CEST (+2)
+  const utcMs    = new Date(d.toLocaleString('en-US', {timeZone: 'UTC'})).getTime();
+  const zurichMs = new Date(d.toLocaleString('en-US', {timeZone: 'Europe/Zurich'})).getTime();
+  const offH     = Math.round((zurichMs - utcMs) / 3600000);
+  const tzLabel  = offH === 1 ? 'CET' : offH === 2 ? 'CEST' : `UTC+${offH}`;
+  return `${datePart} · ${timePart} ${tzLabel}`;
 }
 
 /** SHA-256 of an ArrayBuffer → hex string (Web Crypto API). */
@@ -1172,6 +1199,9 @@ document.getElementById('file-convert').addEventListener('change', async functio
   if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
   convertOrigFile = null; convertBlob = null; convertHeaders = null;
   tubeStart();
+  // Start SHA-256 in parallel with the upload (Web Crypto is fast even on 250MB)
+  const _convHashPromise = file.arrayBuffer().then(buf => _sha256hex(buf));
+  const _convTimestamp   = _zurichDisplayLine();
   const fd = new FormData();
   fd.append('file', file);
   try {
@@ -1205,17 +1235,20 @@ document.getElementById('file-convert').addEventListener('change', async functio
       trimNote +
       'Prima: ' + preFreq.toFixed(1) + ' Hz  \u00b7  Shift applicato: ' + cSign + shiftCent.toFixed(1) + ' cent' +
       '\nDopo: ' + postFreq.toFixed(1) + ' Hz  \u00b7  Scostamento da 432 Hz: ' + pSign + postCents.toFixed(1) + ' cent';
-    const blob = await res.blob();
+    const [blob, fileHash] = await Promise.all([res.blob(), _convHashPromise]);
     convertOrigFile = file;
     convertBlob = blob;
     convertHeaders = {
-      preFreq:   parseFloat(res.headers.get('X-Pre-Freq')    || '0'),
-      shiftCent: parseFloat(res.headers.get('X-Shift-Cents') || '0'),
-      postFreq:  parseFloat(res.headers.get('X-Post-Freq')   || '0'),
-      postCents: parseFloat(res.headers.get('X-Post-Cents')  || '0'),
-      certified: res.headers.get('X-Certified') === 'True',
-      passes:    parseInt(res.headers.get('X-Correction-Passes') || '1', 10),
-      corrErr:   res.headers.get('X-Corr-Pass-Error') || null
+      preFreq:       parseFloat(res.headers.get('X-Pre-Freq')    || '0'),
+      shiftCent:     parseFloat(res.headers.get('X-Shift-Cents') || '0'),
+      postFreq:      parseFloat(res.headers.get('X-Post-Freq')   || '0'),
+      postCents:     parseFloat(res.headers.get('X-Post-Cents')  || '0'),
+      certified:     res.headers.get('X-Certified') === 'True',
+      passes:        parseInt(res.headers.get('X-Correction-Passes') || '1', 10),
+      corrErr:       res.headers.get('X-Corr-Pass-Error') || null,
+      filename:      file.name,
+      sha256Short:   fileHash.slice(0, 8) + '\u2026',
+      displayTime:   _convTimestamp,
     };
     const url = URL.createObjectURL(blob);
     const stem = file.name.replace(/\.[^.]+$/, '');
