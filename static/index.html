@@ -208,6 +208,9 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 }
 .spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
 .spectral-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
+.fft-dl-btn { background: none; border: 1px solid #c8c8c8; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 8px 0 4px; transition: border-color .15s, color .15s; display: block; }
+.fft-dl-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
+.fft-dl-progress { display: none; font-size: 13px; font-weight: 700; color: #34c759; padding: 6px 0 4px; font-family: 'SF Mono','Menlo',monospace; animation: rephase-pulse 0.75s ease-in-out infinite; letter-spacing: .04em; }
 .spectral-panel { background: #d0d0d0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 .spectral-chart-wrap { position: relative; height: 280px; margin-bottom: 14px; }
 .tech-table { width: 100%; border-collapse: collapse; font-family: 'SF Mono','Fira Code','Menlo','Courier New',monospace; font-size: 11px; }
@@ -316,6 +319,8 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <button id="btn-spectral" class="spectral-btn hidden" onclick="toggleSpectral()">Analisi spettrale ↓</button>
         <div id="spectral-panel" class="spectral-panel hidden">
           <div class="spectral-chart-wrap"><canvas id="fft-chart"></canvas></div>
+          <div class="fft-dl-progress" id="fft-dl-progress-verify">● 0%</div>
+          <button class="fft-dl-btn" id="fft-dl-btn-verify" onclick="downloadFftChart('verify')">↓ Scarica grafico FFT</button>
           <table class="tech-table">
             <tr><td>A4 misurato (media pesata)</td><td id="tp-a4w">—</td></tr>
             <tr><td>A4 mediana</td><td id="tp-a4med">—</td></tr>
@@ -367,6 +372,8 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <button id="btn-spectral-conv" class="spectral-btn hidden" style="margin-top:10px;" onclick="toggleSpectralConv()">Analisi spettrale ↓</button>
         <div id="spectral-panel-conv" class="spectral-panel hidden" style="text-align:left;margin-top:8px;">
           <div class="spectral-chart-wrap"><canvas id="fft-chart-conv"></canvas></div>
+          <div class="fft-dl-progress" id="fft-dl-progress-conv">● 0%</div>
+          <button class="fft-dl-btn" id="fft-dl-btn-conv" onclick="downloadFftChart('conv')">↓ Scarica grafico FFT</button>
           <table class="tech-table">
             <tr><td>Frequenza originale</td><td id="tpc-pre">—</td></tr>
             <tr><td>Frequenza convertita</td><td id="tpc-post">—</td></tr>
@@ -425,6 +432,59 @@ const API="";
 let fmt="mp3",convTimer=null,convPct=0;
 let fftChart = null, fftChartConv = null;
 let convertOrigFile = null, convertBlob = null, convertHeaders = null;
+
+async function downloadFftChart(which) {
+  const chart    = which === 'verify' ? fftChart : fftChartConv;
+  const btnId    = 'fft-dl-btn-' + which;
+  const progId   = 'fft-dl-progress-' + which;
+  const stem     = which === 'conv' && convertHeaders
+    ? (convertHeaders.filename || 'rephase').replace(/\.[^.]+$/, '')
+    : (document.getElementById('file-verify')?.files[0]?.name || 'rephase').replace(/\.[^.]+$/, '');
+  if (!chart) return;
+
+  const btn  = document.getElementById(btnId);
+  const prog = document.getElementById(progId);
+  btn.style.display  = 'none';
+  prog.style.display = 'block';
+
+  // Animate 0 → 70% while chart is being prepared
+  let pct = 0;
+  const tick = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 12 + 5, 70);
+    prog.textContent = '● ' + Math.round(pct) + '%';
+  }, 80);
+
+  // Two rAF cycles guarantee the chart has finished its current draw pass
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+
+  // Force a full re-render at current size to avoid partial-canvas artifacts
+  chart.resize();
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+
+  const dataUrl = chart.toBase64Image('image/png', 1.0);
+  clearInterval(tick);
+
+  // Sprint 70 → 100%
+  while (pct < 100) {
+    pct = Math.min(pct + 6, 100);
+    prog.textContent = '● ' + Math.round(pct) + '%';
+    await new Promise(r => setTimeout(r, 18));
+  }
+  await new Promise(r => setTimeout(r, 180));
+
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = stem + '_fft.png';
+  a.click();
+
+  await new Promise(r => setTimeout(r, 350));
+  prog.style.display = 'none';
+  prog.textContent   = '● 0%';
+  btn.style.display  = 'block';
+}
+
 function toggleSpectral() {
   const panel = document.getElementById('spectral-panel');
   const btn   = document.getElementById('btn-spectral');
