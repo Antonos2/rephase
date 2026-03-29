@@ -1,0 +1,10 @@
+start.sh
+.env
+*.env
+__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+venv/
+.DS_Store
+/tmp/
