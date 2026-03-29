@@ -9,6 +9,20 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
          background: #e8e8e8; color: #1a1a1a; min-height: 100vh; }
+  body, div, span, p, h1, h2, h3, h4, label, td, th, li, a, input, button, small {
+    color: #1a1a1a !important;
+  }
+  /* Eccezioni esplicite: valori numerici con classe colore istituzionale */
+  .green, .value-green, .value.green, .card.accent .value, .val-card.accent .value,
+  .semaforo .light.on-green, .save-feedback, .cost-total span,
+  .phase-badge, .btn-add { color: #34c759 !important; }
+  .red, .value-red, .value.red, .card.neg .value { color: #a32d2d !important; }
+  .amber,  .value-amber, .card.warn .value, .value.amber { color: #f5a623 !important; }
+  .val-range-item.mid .rval { color: #34c759 !important; }
+  .val-range-item.max .rval { color: #1e8c3a !important; }
+  .phase-badge { background: #e8f8ee; color: #1e8c3a !important; }
+  .phase-badge.active-phase { background: #34c759; color: #1a1a1a !important; }
+  #login-box input, .cost-table-wrap input { color: #1a1a1a !important; }
 
   /* ── Login overlay ── */
   #login-overlay {
@@ -63,7 +77,7 @@
   .card .value { font-size: 28px; font-weight: 700; line-height: 1; }
   .card .sub   { font-size: 12px; color: #1a1a1a; margin-top: 5px; }
   .card.accent .value { color: #34c759; }
-  .card.warn   .value { color: #e67e22; }
+  .card.warn   .value { color: #f5a623 !important; }
   .card.neg    .value { color: #a32d2d; }
 
   /* ── Wide cards ── */
@@ -131,7 +145,7 @@
   }
   .cost-table-wrap input:focus { border-color: #34c759; }
   .cost-table-wrap .del-btn {
-    background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer;
+    background: none; border: none; color: #1a1a1a; font-size: 16px; cursor: pointer;
     padding: 2px 6px; border-radius: 4px; transition: color .2s;
   }
   .cost-table-wrap .del-btn:hover { color: #a32d2d; }
@@ -303,7 +317,7 @@
 
     <!-- Fasi di crescita -->
     <div class="phases-wrap">
-      <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;
                   letter-spacing:.05em;margin-bottom:10px;">Fasi di crescita</div>
       <div id="phases-list"></div>
     </div>
@@ -838,7 +852,8 @@
 
     // Cards row
     const growthColor = monthlyGrowth >= 10 ? '#34c759' : monthlyGrowth >= 5 ? '#f5a623' : '#888';
-    const churnColor  = monthlyChurn < 2 ? '#34c759' : monthlyChurn < 5 ? '#f5a623' : '#e74c3c';
+    const growthClass = monthlyGrowthPct >= 10 ? 'green' : monthlyGrowthPct >= 5 ? 'amber' : 'red';
+    const churnClass  = monthlyChurn < 2 ? 'green' : monthlyChurn < 5 ? 'amber' : 'red';
     document.getElementById('val-cards-row').innerHTML = `
       <div class="val-card accent">
         <div class="label">ARR</div>
@@ -852,12 +867,12 @@
       </div>
       <div class="val-card">
         <div class="label">Crescita mensile</div>
-        <div class="value" style="color:${growthColor}">${monthlyGrowth.toFixed(1)}%</div>
+        <div class="value ${growthClass}">${monthlyGrowth.toFixed(1)}%</div>
         <div class="sub">${(d.daily_net * 30).toFixed(1)} utenti netti/mese</div>
       </div>
       <div class="val-card">
         <div class="label">Churn mensile</div>
-        <div class="value" style="color:${churnColor}">${monthlyChurn.toFixed(1)}%</div>
+        <div class="value ${churnClass}">${monthlyChurn.toFixed(1)}%</div>
         <div class="sub">${d.cancellations_month} disdette questo mese</div>
       </div>
     `;
