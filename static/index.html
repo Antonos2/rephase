@@ -77,6 +77,31 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 @keyframes rephase-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.75;transform:scale(1.04);}}
 .logo{animation:rephase-pulse 2.8s ease-in-out infinite;}
 .status.processing { color: #1e8c3a; font-weight: 600; animation: rephase-pulse 1.8s ease-in-out infinite; }
+/* ── FFT live visualizer ── */
+.fft-live-wrap {
+  display: none; position: relative; background: #1a1a1a;
+  border-radius: 12px; overflow: hidden; margin: 14px 0; height: 230px;
+}
+.fft-live-wrap canvas { display: block; width: 100%; height: 100%; }
+.fft-live-progress {
+  position: absolute; bottom: 0; left: 0; height: 3px;
+  background: #34c759; width: 0%; transition: width 0.1s linear;
+  box-shadow: 0 0 6px rgba(52,199,89,.7);
+}
+.fft-live-badge {
+  position: absolute; top: 12px; right: 14px;
+  background: rgba(18,18,18,.88); border: 1.5px solid #34c759;
+  border-radius: 9px; padding: 7px 14px; font-size: 15px; font-weight: 700;
+  color: #34c759; opacity: 0; transition: opacity .5s;
+  backdrop-filter: blur(4px); pointer-events: none; white-space: nowrap;
+}
+.fft-live-badge.fail  { border-color: #e74c3c; color: #e74c3c; }
+.fft-live-badge.show  { opacity: 1; }
+.fft-win-counter {
+  position: absolute; top: 12px; left: 14px; font-size: 10px;
+  font-weight: 600; color: rgba(52,199,89,.65); letter-spacing: .05em;
+  font-family: monospace; pointer-events: none;
+}
 .spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
 .spectral-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
 .spectral-panel { background: #d0d0d0; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
@@ -115,6 +140,13 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
       <div class="status" id="status-verify">Analisi in corso...</div>
+      <!-- FFT live visualizer -->
+      <div class="fft-live-wrap" id="fft-live-wrap">
+        <canvas id="fft-live-canvas"></canvas>
+        <div class="fft-win-counter" id="fft-win-counter">FINESTRA 0 / 20</div>
+        <div class="fft-live-badge" id="fft-live-badge"></div>
+        <div class="fft-live-progress" id="fft-live-progress"></div>
+      </div>
       <div id="result-verify" class="hidden">
         <div class="result-grid">
           <div class="metric">
@@ -482,6 +514,105 @@ function tubeError(msg){clearInterval(convTimer);const st=document.getElementByI
     document.getElementById(inputId).dispatchEvent(new Event('change'));
   });
 });
+// ── FFT Live Visualizer ────────────────────────────────────────────────────
+let _fftLiveChart = null;
+const _fftDarkBg = {
+  id: 'fftDarkBg',
+  beforeDraw(chart) {
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, chart.width, chart.height);
+    ctx.restore();
+  }
+};
+
+function _initLiveChart() {
+  if (_fftLiveChart) { _fftLiveChart.destroy(); _fftLiveChart = null; }
+  const ctx = document.getElementById('fft-live-canvas').getContext('2d');
+  _fftLiveChart = new Chart(ctx, {
+    type: 'scatter',
+    plugins: [_fftDarkBg],
+    data: { datasets: [
+      { label: 'Spettro',
+        data: [], showLine: true,
+        borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,.08)',
+        borderWidth: 1.5, pointRadius: 0, tension: 0.2, fill: true, order: 3 },
+      { label: 'A4 est.',
+        data: [],
+        showLine: true, borderColor: 'rgba(255,255,255,0.45)',
+        borderWidth: 1, borderDash: [5, 4], pointRadius: 0, order: 2 },
+      { label: 'A4 picco',
+        data: [],
+        backgroundColor: '#ffffff', borderColor: '#34c759',
+        pointRadius: 6, pointHoverRadius: 8, order: 1 },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false },
+      },
+      scales: {
+        x: { type: 'linear', min: 200, max: 600,
+          ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 10 },
+                   callback: v => [220,260,300,360,432,440,500,550].includes(+v.toFixed(0)) ? v : '' },
+          grid: { color: 'rgba(255,255,255,0.07)' },
+          border: { color: 'rgba(255,255,255,0.15)' } },
+        y: { min: 0, max: 1,
+          ticks: { color: 'rgba(255,255,255,0.45)', font: { size: 10 },
+                   callback: v => (v * 100).toFixed(0) + '%' },
+          grid: { color: 'rgba(255,255,255,0.07)' },
+          border: { color: 'rgba(255,255,255,0.15)' } },
+      }
+    }
+  });
+}
+
+function _updateLiveChart(msg) {
+  if (!_fftLiveChart) return;
+  const freqs = msg.freqs, amps = msg.amps;
+  const a4 = msg.a4_estimate;
+  // Spectrum
+  _fftLiveChart.data.datasets[0].data = freqs.map((f, i) => ({ x: f, y: amps[i] }));
+  // A4 vertical marker (dense points 0→1)
+  if (a4 && a4 >= 200 && a4 <= 600) {
+    _fftLiveChart.data.datasets[1].data = Array.from({ length: 41 }, (_, i) => ({ x: a4, y: i / 40 }));
+    // Find amplitude at a4
+    let a4amp = 0.8;
+    for (let i = 0; i < freqs.length - 1; i++) {
+      if (freqs[i] <= a4 && freqs[i + 1] >= a4) {
+        const t = (a4 - freqs[i]) / (freqs[i + 1] - freqs[i]);
+        a4amp = amps[i] + t * (amps[i + 1] - amps[i]);
+        break;
+      }
+    }
+    _fftLiveChart.data.datasets[2].data = [{ x: a4, y: a4amp }];
+  }
+  _fftLiveChart.update('none');
+  // Progress bar + window counter
+  const pct = ((msg.window_idx + 1) / msg.total_windows * 100).toFixed(1);
+  document.getElementById('fft-live-progress').style.width = pct + '%';
+  document.getElementById('fft-win-counter').textContent =
+    'FINESTRA ' + (msg.window_idx + 1) + ' / ' + msg.total_windows +
+    (msg.a4_estimate ? '  ·  A4 est. ' + msg.a4_estimate.toFixed(1) + ' Hz' : '');
+}
+
+function _finalizeLiveChart(result) {
+  document.getElementById('fft-live-progress').style.width = '100%';
+  const badge = document.getElementById('fft-live-badge');
+  const cSign = result.cents_vs_432 >= 0 ? '+' : '';
+  if (result.is_432) {
+    badge.textContent = '432 Hz ✓  ' + cSign + result.cents_vs_432.toFixed(1) + ' cent';
+    badge.className = 'fft-live-badge show';
+  } else {
+    badge.textContent = result.peak_freq.toFixed(1) + ' Hz  ' + cSign + result.cents_vs_432.toFixed(1) + ' cent';
+    badge.className = 'fft-live-badge fail show';
+  }
+  document.getElementById('fft-win-counter').textContent =
+    'ANALISI COMPLETATA  ·  A4 = ' + result.peak_freq.toFixed(3) + ' Hz';
+}
+
 document.getElementById('file-verify').addEventListener('change', async function() {
   const file = this.files[0];
   if (!file) return;
@@ -490,32 +621,62 @@ document.getElementById('file-verify').addEventListener('change', async function
   document.getElementById('btn-spectral').classList.add('hidden');
   document.getElementById('spectral-panel').classList.add('hidden');
   document.getElementById('btn-spectral').textContent = 'Analisi spettrale \u2193';
+  document.getElementById('fft-live-badge').className = 'fft-live-badge';
+  document.getElementById('fft-live-badge').textContent = '';
+  document.getElementById('fft-live-progress').style.width = '0%';
+
   const st = document.getElementById('status-verify');
   st.textContent = 'Analisi in corso...';
   st.className = 'status visible processing';
-  const fd = new FormData();
-  fd.append('file', file);
-  try {
-    const res = await fetch(API + '/verify', {method:'POST', body:fd});
-    const d = await res.json();
-    st.className = 'status';
-    const ok = d.is_432;
-    const cSign = d.cents_vs_432 >= 0 ? '+' : '';
-    document.getElementById('rv-freq').textContent = d.peak_freq.toFixed(1) + ' Hz';
-    document.getElementById('rv-sub').textContent = d.verdict;
-    document.getElementById('rv-cents').textContent = cSign + d.cents_vs_432.toFixed(1);
-    document.getElementById('rv-verdict').className = 'verdict' + (ok ? '' : ' fail');
-    document.getElementById('rv-dot').className = 'verdict-dot' + (ok ? '' : ' gray');
-    document.getElementById('rv-text').textContent = ok ? 'Certificato a 432 Hz \u2713' : 'Questo brano NON \u00e8 a 432 Hz';
-    const detail = ok
-      ? 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent  \u00b7  Analisi su ' + d.n_votes + ' finestre'
-      : 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
-    document.getElementById('rv-detail').textContent = detail;
-    document.getElementById('result-verify').classList.remove('hidden');
-    renderSpectral(d, file.name);
-  } catch(e) {
-    st.textContent = 'Errore — il backend \u00e8 in esecuzione?';
-  }
+
+  // Show live canvas and init chart
+  const wrap = document.getElementById('fft-live-wrap');
+  wrap.style.display = 'block';
+  _initLiveChart();
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(proto + '//' + location.host + '/ws/analyze');
+
+  ws.onopen = async () => {
+    ws.send(JSON.stringify({ filename: file.name }));
+    const buf = await file.arrayBuffer();
+    ws.send(buf);
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'window') {
+      _updateLiveChart(msg);
+    } else if (msg.type === 'done') {
+      const d = msg.result;
+      _finalizeLiveChart(d);
+      st.className = 'status';
+      const ok = d.is_432;
+      const cSign = d.cents_vs_432 >= 0 ? '+' : '';
+      document.getElementById('rv-freq').textContent = d.peak_freq.toFixed(1) + ' Hz';
+      document.getElementById('rv-sub').textContent = d.verdict;
+      document.getElementById('rv-cents').textContent = cSign + d.cents_vs_432.toFixed(1);
+      document.getElementById('rv-verdict').className = 'verdict' + (ok ? '' : ' fail');
+      document.getElementById('rv-dot').className = 'verdict-dot' + (ok ? '' : ' gray');
+      document.getElementById('rv-text').textContent = ok ? 'Certificato a 432 Hz \u2713' : 'Questo brano NON \u00e8 a 432 Hz';
+      const detail = ok
+        ? 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent  \u00b7  Analisi su ' + d.n_votes + ' finestre'
+        : 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
+      document.getElementById('rv-detail').textContent = detail;
+      document.getElementById('result-verify').classList.remove('hidden');
+      renderSpectral(d, file.name);
+    } else if (msg.type === 'error') {
+      st.textContent = 'Errore: ' + msg.error;
+      st.className = 'status visible';
+      wrap.style.display = 'none';
+    }
+  };
+
+  ws.onerror = () => {
+    st.textContent = 'Errore WebSocket — il backend \u00e8 in esecuzione?';
+    st.className = 'status visible';
+    wrap.style.display = 'none';
+  };
 });
 
 document.getElementById('file-convert').addEventListener('change', async function() {

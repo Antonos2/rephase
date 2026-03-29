@@ -84,6 +84,86 @@ def _measure_a4(samples, sr):
         "algorithm": "FFT Hann window + parabolic interpolation + octave folding + amplitude-weighted average",
     }
 
+def _measure_a4_streaming(samples, sr):
+    """Generator: yield per-window FFT data (200-600 Hz) as analysis converges.
+    Final yield is {"type":"done","result":{...full _measure_a4 output...}}.
+    Pacing: ~120 ms sleep between windows for smooth 150 ms visual cadence.
+    Data is scientifically real — accumulated average spectrum per window.
+    """
+    import time
+
+    DISP_MIN, DISP_MAX, DISP_PTS = 200.0, 600.0, 250
+    positions = np.linspace(
+        WINDOW_SIZE, max(WINDOW_SIZE + 1, len(samples) - WINDOW_SIZE), N_WINDOWS
+    ).astype(int)
+
+    spec_acc  = None
+    Fm_ref    = None
+    spec_cnt  = 0
+    votes     = []
+    res       = None
+
+    for i, pos in enumerate(positions):
+        chunk = samples[pos : pos + WINDOW_SIZE]
+        if len(chunk) < WINDOW_SIZE:
+            continue
+
+        S  = np.abs(rfft(chunk * np.hanning(WINDOW_SIZE)))
+        F  = rfftfreq(WINDOW_SIZE, 1.0 / sr)
+        res = float(F[1] - F[0])
+
+        mask = (F >= 50) & (F <= 2000)
+        Sm, Fm = S[mask], F[mask]
+
+        if spec_acc is None:
+            spec_acc = Sm.copy(); Fm_ref = Fm
+        else:
+            spec_acc = spec_acc + Sm
+        spec_cnt += 1
+
+        # Peak detection → A4 votes
+        if Sm.max() > 0:
+            peaks, _ = find_peaks(Sm, height=Sm.max() * 0.01,
+                                  distance=int(20 / res))
+            if len(peaks):
+                pf = Fm[peaks]; pa = Sm[peaks]
+                order = np.argsort(pa)[::-1]
+                pf, pa = pf[order[:15]], pa[order[:15]]
+                for freq, amp in zip(pf, pa):
+                    f4 = freq
+                    while f4 < A4_MIN: f4 *= 2
+                    while f4 > A4_MAX: f4 /= 2
+                    if A4_MIN <= f4 <= A4_MAX:
+                        votes.append((f4, float(amp)))
+
+        # Current A4 estimate (amplitude-weighted)
+        a4_est = None
+        if votes:
+            fv = np.array([v[0] for v in votes])
+            av = np.array([v[1] for v in votes])
+            a4_est = float(np.average(fv, weights=av))
+
+        # Display spectrum: accumulated average, 200-600 Hz, fixed grid
+        S_avg  = spec_acc / spec_cnt
+        t_freqs = np.linspace(DISP_MIN, DISP_MAX, DISP_PTS)
+        S_disp  = np.interp(t_freqs, Fm_ref, S_avg)
+        peak_v  = S_disp.max()
+        S_norm  = S_disp / peak_v if peak_v > 0 else S_disp
+
+        yield {
+            "type": "window",
+            "window_idx": i,
+            "total_windows": N_WINDOWS,
+            "freqs": [round(float(f), 2) for f in t_freqs],
+            "amps":  [round(float(a), 4) for a in S_norm],
+            "a4_estimate": round(a4_est, 3) if a4_est is not None else None,
+        }
+        time.sleep(0.12)   # ~120 ms pacing → ~150 ms cadence per frame
+
+    result = _measure_a4(samples, sr)
+    yield {"type": "done", "result": result}
+
+
 def _load_as_wav(input_path, tmp_wav, channels=1):
     subprocess.run(["ffmpeg","-y","-i",input_path,"-ac",str(channels),"-ar",str(SR_ANALYSIS),"-c:a","pcm_s16le",tmp_wav,"-loglevel","error"], check=True, capture_output=True)
 

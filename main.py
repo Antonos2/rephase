@@ -2,7 +2,7 @@
 import os, uuid
 import aiofiles
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
@@ -78,6 +78,7 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
         stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
     return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4", headers=stats_headers)
 
+import asyncio, json as _json
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import secrets
@@ -101,6 +102,64 @@ def _check_admin(authorization: str = Header(default=None)):
         raise HTTPException(401, "Unauthorized")
     if not secrets.compare_digest(authorization[7:].encode(), _ADMIN_PASSWORD.encode()):
         raise HTTPException(401, "Wrong password")
+
+@app.websocket("/ws/analyze")
+async def ws_analyze(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        meta_text = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+        meta = _json.loads(meta_text)
+        filename = meta.get("filename", "upload.mp3")
+        ext = Path(filename).suffix.lower()
+        if ext not in ALLOWED:
+            await websocket.send_json({"type": "error", "error": f"Formato non supportato: {ext}"})
+            return
+        file_bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=60)
+        if len(file_bytes) > MAX_SIZE:
+            await websocket.send_json({"type": "error", "error": "File troppo grande"})
+            return
+    except (asyncio.TimeoutError, WebSocketDisconnect):
+        return
+
+    uid  = str(uuid.uuid4())
+    tmp  = str(TEMP_DIR / f"{uid}{ext}")
+    with open(tmp, "wb") as f:
+        f.write(file_bytes)
+
+    loop  = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def _run():
+        import tempfile, os as _os
+        from core.converter import _load_as_wav, _read_wav_samples, _measure_a4_streaming
+        tmp_wav = tempfile.mktemp(suffix=".wav")
+        try:
+            _load_as_wav(tmp, tmp_wav, channels=1)
+            samples, sr = _read_wav_samples(tmp_wav)
+            for msg in _measure_a4_streaming(samples, sr):
+                asyncio.run_coroutine_threadsafe(queue.put(msg), loop).result()
+        except Exception as e:
+            asyncio.run_coroutine_threadsafe(
+                queue.put({"type": "error", "error": str(e)}), loop
+            ).result()
+        finally:
+            for p in [tmp_wav, tmp]:
+                if _os.path.exists(p): _os.remove(p)
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
+
+    loop.run_in_executor(None, _run)
+
+    try:
+        while True:
+            msg = await queue.get()
+            if msg is None:
+                break
+            await websocket.send_json(msg)
+            if msg.get("type") in ("error", "done"):
+                break
+    except (WebSocketDisconnect, Exception):
+        pass
+
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page():
