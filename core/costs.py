@@ -10,7 +10,7 @@ _DEFAULT = {
     "items": [],
     "phases": [
         {"name": "Fase 1", "min_users": 0,    "max_users": 100,    "fixed_chf": 17},
-        {"name": "Fase 2", "min_users": 101,  "max_users": 500,    "fixed_chf": 17},
+        {"name": "Fase 2", "min_users": 101,  "max_users": 500,    "fixed_chf": 30},
         {"name": "Fase 3", "min_users": 501,  "max_users": 2000,   "fixed_chf": 180},
         {"name": "Fase 4", "min_users": 2001, "max_users": 999999, "fixed_chf": 417},
     ],
