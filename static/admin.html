@@ -91,6 +91,76 @@
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
          background: #34c759; animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+
+  /* ── Costi & Margine ── */
+  .section-title {
+    font-size: 13px; font-weight: 700; color: #888; text-transform: uppercase;
+    letter-spacing: .08em; margin: 32px 0 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: #d0d0d0;
+  }
+
+  /* Semaforo */
+  .semaforo-wrap { display: flex; align-items: center; gap: 18px;
+                   background: #fff; border-radius: 12px; padding: 20px 24px;
+                   box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .semaforo { display: flex; gap: 10px; }
+  .semaforo .light {
+    width: 26px; height: 26px; border-radius: 50%; background: #ccc;
+    transition: background .4s, box-shadow .4s;
+  }
+  .semaforo .light.on-green  { background: #34c759; box-shadow: 0 0 10px rgba(52,199,89,.6); }
+  .semaforo .light.on-yellow { background: #f5a623; box-shadow: 0 0 10px rgba(245,166,35,.6); }
+  .semaforo .light.on-red    { background: #e74c3c; box-shadow: 0 0 10px rgba(231,76,60,.6); }
+  .semaforo-text .big   { font-size: 22px; font-weight: 700; }
+  .semaforo-text .small { font-size: 12px; color: #888; margin-top: 2px; }
+
+  /* Tabella costi */
+  .cost-table-wrap { background: #fff; border-radius: 12px; padding: 20px 24px;
+                     box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .cost-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cost-table-wrap th { text-align: left; font-size: 11px; font-weight: 600; color: #888;
+                        text-transform: uppercase; letter-spacing: .05em;
+                        padding: 0 8px 10px; }
+  .cost-table-wrap td { padding: 6px 8px; border-top: 1px solid #f0f0f0; }
+  .cost-table-wrap input {
+    border: 1.5px solid #e0e0e0; border-radius: 6px; padding: 5px 8px;
+    font-size: 13px; width: 100%; outline: none; transition: border-color .2s;
+  }
+  .cost-table-wrap input:focus { border-color: #34c759; }
+  .cost-table-wrap .del-btn {
+    background: none; border: none; color: #ccc; font-size: 16px; cursor: pointer;
+    padding: 2px 6px; border-radius: 4px; transition: color .2s;
+  }
+  .cost-table-wrap .del-btn:hover { color: #a32d2d; }
+  .cost-table-footer { display: flex; align-items: center; justify-content: space-between;
+                       margin-top: 14px; }
+  .cost-total { font-size: 14px; font-weight: 700; }
+  .cost-total span { color: #34c759; }
+  .btn-add { background: none; border: 1.5px solid #34c759; color: #1a1a1a;
+             border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+             cursor: pointer; transition: background .2s; }
+  .btn-add:hover { background: rgba(52,199,89,.12); }
+  .btn-save { background: #34c759; border: none; color: #1a1a1a;
+              border-radius: 7px; padding: 6px 16px; font-size: 13px; font-weight: 600;
+              cursor: pointer; transition: opacity .2s; }
+  .btn-save:hover { opacity: .85; }
+  .save-feedback { font-size: 12px; color: #34c759; margin-left: 8px;
+                   opacity: 0; transition: opacity .4s; }
+
+  /* Fasi */
+  .phases-wrap { background: #fff; border-radius: 12px; padding: 20px 24px;
+                 box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .phase-row { display: flex; gap: 10px; align-items: center;
+               padding: 8px 0; border-top: 1px solid #f0f0f0; font-size: 13px; }
+  .phase-row:first-child { border-top: none; }
+  .phase-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+                 background: #e8f8ee; color: #1e8c3a; white-space: nowrap; }
+  .phase-badge.active-phase { background: #34c759; color: #1a1a1a; }
+  .phase-detail { flex: 1; color: #444; }
+  .phase-cost { font-weight: 700; color: #1a1a1a; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -148,6 +218,64 @@
       <canvas id="trend-chart"></canvas>
     </div>
 
+    <!-- ══ SEZIONE COSTI & MARGINE ══ -->
+    <div class="section-title">Controllo costi e margine</div>
+
+    <!-- Semaforo -->
+    <div class="semaforo-wrap">
+      <div class="semaforo">
+        <div class="light" id="sl-green"></div>
+        <div class="light" id="sl-yellow"></div>
+        <div class="light" id="sl-red"></div>
+      </div>
+      <div class="semaforo-text">
+        <div class="big" id="sl-label">—</div>
+        <div class="small" id="sl-sub">verde &gt;50% · giallo 20–50% · rosso &lt;20%</div>
+      </div>
+    </div>
+
+    <!-- Costi fissi mensili -->
+    <div class="cost-table-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:44%">Voce</th>
+          <th style="width:22%">CHF/mese</th>
+          <th style="width:24%">Data inizio</th>
+          <th style="width:10%"></th>
+        </tr></thead>
+        <tbody id="cost-rows"></tbody>
+      </table>
+      <div class="cost-table-footer">
+        <div>
+          <button class="btn-add" onclick="addCostRow()">+ Aggiungi voce</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="cost-total">Totale: <span id="cost-total">CHF 0.00</span></div>
+          <button class="btn-save" onclick="saveCosts()">Salva</button>
+          <span class="save-feedback" id="save-feedback">✓ Salvato</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fasi di crescita -->
+    <div class="phases-wrap">
+      <div style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;
+                  letter-spacing:.05em;margin-bottom:10px;">Fasi di crescita</div>
+      <div id="phases-list"></div>
+    </div>
+
+    <!-- Grafico cumulativo MRR vs Costi -->
+    <div class="chart-card">
+      <div class="label">MRR cumulativo vs Costi — dal lancio</div>
+      <canvas id="history-chart" style="max-height:260px"></canvas>
+    </div>
+
+    <!-- Proiezione 6 mesi -->
+    <div class="chart-card">
+      <div class="label">Proiezione 6 mesi — utenti e MRR per fase</div>
+      <canvas id="proj-chart" style="max-height:260px"></canvas>
+    </div>
+
   </div><!-- /dash-content -->
 </div><!-- /dashboard -->
 
@@ -203,11 +331,16 @@
         return false;
       }
       const d = await res.json();
+      _metricsData = d;
       render(d);
       document.getElementById('last-updated').textContent =
         'Aggiornato: ' + new Date(d.timestamp).toLocaleTimeString('it-IT');
       document.getElementById('dash-status').style.display = 'none';
       document.getElementById('dash-content').style.display = 'block';
+      // Load costs after metrics (needs _metricsData for phases highlight)
+      await loadCosts();
+      renderHistoryChart(d.monthly_history);
+      renderProjChart(d);
       return true;
     } catch(e) {
       showError(e.message);
@@ -260,8 +393,257 @@
     netEl.textContent = (net >= 0 ? '+' : '') + num(net);
     netEl.style.color = net >= 0 ? '#34c759' : '#a32d2d';
 
+    // Semaforo
+    renderSemaforo(d.net_margin_pct);
+
     // Chart
     renderChart(d.chart);
+  }
+
+  // ── Costs & Margin section ────────────────────────────────────────────────
+  let _costsData = null;
+  let _metricsData = null;
+  let _historyChart = null, _projChart = null;
+
+  async function loadCosts() {
+    try {
+      const res = await fetch(API + '/admin/costs', {
+        headers: { 'Authorization': 'Bearer ' + _token }
+      });
+      if (!res.ok) return;
+      _costsData = await res.json();
+      renderCostTable();
+      renderPhases(_metricsData);
+    } catch(e) { console.warn('loadCosts:', e); }
+  }
+
+  async function saveCosts() {
+    if (!_costsData) return;
+    _costsData.items = readCostRows();
+    try {
+      const res = await fetch(API + '/admin/costs', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + _token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(_costsData)
+      });
+      if (res.ok) {
+        const fb = document.getElementById('save-feedback');
+        fb.style.opacity = '1';
+        setTimeout(() => fb.style.opacity = '0', 2000);
+        updateCostTotal();
+      }
+    } catch(e) { console.warn('saveCosts:', e); }
+  }
+
+  function readCostRows() {
+    const rows = document.querySelectorAll('#cost-rows tr');
+    const items = [];
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      if (inputs.length < 3) return;
+      const name = inputs[0].value.trim();
+      const amt  = parseFloat(inputs[1].value) || 0;
+      const date = inputs[2].value;
+      const id   = row.dataset.id || '';
+      if (name) items.push({ id, name, amount_chf: amt, start_date: date });
+    });
+    return items;
+  }
+
+  function renderCostTable() {
+    if (!_costsData) return;
+    const tbody = document.getElementById('cost-rows');
+    tbody.innerHTML = '';
+    (_costsData.items || []).forEach(item => addCostRow(item));
+    updateCostTotal();
+  }
+
+  function addCostRow(item = {}) {
+    const tbody = document.getElementById('cost-rows');
+    const tr = document.createElement('tr');
+    tr.dataset.id = item.id || '';
+    const today = new Date().toISOString().slice(0, 10);
+    tr.innerHTML = `
+      <td><input type="text" value="${esc(item.name||'')}" placeholder="Nome voce" oninput="updateCostTotal()"></td>
+      <td><input type="number" value="${item.amount_chf||''}" placeholder="0.00" step="0.01" min="0" oninput="updateCostTotal()"></td>
+      <td><input type="date" value="${item.start_date||today}"></td>
+      <td><button class="del-btn" onclick="this.closest('tr').remove();updateCostTotal()">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+    updateCostTotal();
+  }
+
+  function updateCostTotal() {
+    const inputs = document.querySelectorAll('#cost-rows td:nth-child(2) input');
+    let total = 0;
+    inputs.forEach(i => total += parseFloat(i.value) || 0);
+    document.getElementById('cost-total').textContent = 'CHF ' + total.toFixed(2);
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  }
+
+  // ── Semaforo ──────────────────────────────────────────────────────────────
+  function renderSemaforo(pct) {
+    document.getElementById('sl-green').className  = 'light' + (pct > 50  ? ' on-green'  : '');
+    document.getElementById('sl-yellow').className = 'light' + (pct >= 20 && pct <= 50 ? ' on-yellow' : '');
+    document.getElementById('sl-red').className    = 'light' + (pct < 20  ? ' on-red'    : '');
+    const color = pct > 50 ? '#34c759' : pct >= 20 ? '#f5a623' : '#e74c3c';
+    const label = pct > 50 ? 'Margine sano' : pct >= 20 ? 'Margine accettabile' : 'Margine critico';
+    document.getElementById('sl-label').textContent = label + ' (' + pct.toFixed(1) + '%)';
+    document.getElementById('sl-label').style.color = color;
+  }
+
+  // ── Phase list ────────────────────────────────────────────────────────────
+  function renderPhases(d) {
+    if (!_costsData) return;
+    const phases = _costsData.phases || [];
+    const users  = d ? d.pro_users_active : 0;
+    const container = document.getElementById('phases-list');
+    container.innerHTML = '';
+    phases.forEach(p => {
+      const isActive = users >= p.min_users && users <= p.max_users;
+      const div = document.createElement('div');
+      div.className = 'phase-row';
+      div.innerHTML = `
+        <div class="phase-badge${isActive ? ' active-phase' : ''}">${esc(p.name)}</div>
+        <div class="phase-detail">${p.min_users}–${p.max_users === 999999 ? '∞' : p.max_users} utenti Pro</div>
+        <div class="phase-cost">CHF ${p.fixed_chf.toFixed(0)}/mese</div>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  // ── History chart ─────────────────────────────────────────────────────────
+  function renderHistoryChart(history) {
+    if (!history || !history.labels || !history.labels.length) return;
+    const labels = history.labels.map(l => {
+      const [y, m] = l.split('-');
+      return new Date(+y, +m - 1).toLocaleDateString('it-IT', {month:'short', year:'2-digit'});
+    });
+    if (_historyChart) _historyChart.destroy();
+    const ctx = document.getElementById('history-chart').getContext('2d');
+
+    // Area fill between lines = margin
+    _historyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'MRR cumulativo',
+            data: history.mrr_cumulative,
+            borderColor: '#34c759', backgroundColor: 'rgba(52,199,89,.15)',
+            borderWidth: 2, pointRadius: 3, fill: '+1', tension: 0.3,
+          },
+          {
+            label: 'Costi cumulativi',
+            data: history.cost_cumulative,
+            borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,.08)',
+            borderWidth: 2, pointRadius: 3, fill: false, tension: 0.3,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { font: { size: 12 }, color: '#1a1a1a' } },
+          tooltip: { callbacks: {
+            label: item => ' ' + item.dataset.label + ': CHF ' + item.raw.toFixed(2)
+          }}
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
+          y: { beginAtZero: true, ticks: { color: '#888', font: { size: 11 },
+               callback: v => 'CHF ' + v }, grid: { color: 'rgba(0,0,0,.06)' } }
+        }
+      }
+    });
+  }
+
+  // ── 6-month projection chart ──────────────────────────────────────────────
+  function renderProjChart(d) {
+    if (!d || !_costsData) return;
+    const phases = _costsData.phases || [];
+    const arpu   = d.arpu_chf || 0;
+    const dailyNet = d.daily_net || 0;
+    let users = d.pro_users_active;
+
+    const labels = [], projMrr = [], projCosts = [], projMargin = [];
+    const now = new Date();
+
+    for (let i = 1; i <= 6; i++) {
+      const d2 = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      labels.push(d2.toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }));
+      users = Math.max(0, users + dailyNet * 30);
+      const mrr = Math.round(users * arpu * 100) / 100;
+
+      // Find phase
+      let phaseCost = phases.length ? phases[phases.length - 1].fixed_chf : 0;
+      for (const p of phases) {
+        if (users >= p.min_users && users <= p.max_users) {
+          phaseCost = p.fixed_chf;
+          break;
+        }
+      }
+      const margin = mrr - mrr * 0.029 - Math.round(users) * 0.30 - phaseCost;
+      projMrr.push(Math.round(mrr * 100) / 100);
+      projCosts.push(phaseCost);
+      projMargin.push(Math.round(margin * 100) / 100);
+    }
+
+    if (_projChart) _projChart.destroy();
+    const ctx = document.getElementById('proj-chart').getContext('2d');
+    _projChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'MRR proiettato',
+            data: projMrr,
+            backgroundColor: 'rgba(52,199,89,.7)',
+            borderColor: '#34c759', borderWidth: 1, borderRadius: 3,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Costi fissi fase',
+            data: projCosts,
+            backgroundColor: 'rgba(231,76,60,.5)',
+            borderColor: '#e74c3c', borderWidth: 1, borderRadius: 3,
+            yAxisID: 'y',
+          },
+          {
+            type: 'line',
+            label: 'Margine netto',
+            data: projMargin,
+            borderColor: '#1e8c3a', backgroundColor: 'transparent',
+            borderWidth: 2, pointRadius: 4, tension: 0.3,
+            yAxisID: 'y',
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { font: { size: 12 }, color: '#1a1a1a' } },
+          tooltip: { callbacks: {
+            label: item => ' ' + item.dataset.label + ': CHF ' + item.raw.toFixed(2)
+          }}
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
+          y: { beginAtZero: true, ticks: { color: '#888', font: { size: 11 },
+               callback: v => 'CHF ' + v }, grid: { color: 'rgba(0,0,0,.06)' } }
+        }
+      }
+    });
   }
 
   function renderChart(c) {

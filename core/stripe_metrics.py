@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stripe metrics aggregator for Rephase admin dashboard."""
-import os, time, math
+import os, time
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
@@ -12,7 +12,96 @@ def _ts(dt: datetime) -> int:
     return int(dt.replace(tzinfo=timezone.utc).timestamp())
 
 
-def get_metrics(fixed_costs_chf: float = 0.0) -> dict:
+def _month_bounds(year: int, month: int):
+    """Return (start, end) as aware datetimes for the given month."""
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    if month == 12:
+        end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    return start, end
+
+
+def _months_between(start: datetime, end: datetime) -> list:
+    """Return list of (year, month) tuples from start month to end month inclusive."""
+    result = []
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        result.append((y, m))
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+    return result
+
+
+def _build_monthly_history(launch_date: str, all_subs: list, arpu: float, costs_data: dict) -> dict:
+    """Reconstruct monthly MRR and costs from launch_date to current month."""
+    from core.costs import phase_for_users, total_monthly_chf
+    try:
+        launch = datetime.strptime(launch_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except Exception:
+        return {}
+
+    now = datetime.now(timezone.utc)
+    months = _months_between(launch, now)
+    if not months:
+        return {}
+
+    labels, mrr_series, cost_series = [], [], []
+
+    for (y, m) in months:
+        m_start, m_end = _month_bounds(y, m)
+        label = f"{y}-{m:02d}"
+
+        # Count subscriptions active during this month:
+        # created before month-end AND (still active OR canceled_at >= month_start)
+        active_count = 0
+        for sub in all_subs:
+            created = datetime.fromtimestamp(sub.created, tz=timezone.utc)
+            if created >= m_end:
+                continue
+            if sub.status == "active":
+                active_count += 1
+            elif sub.canceled_at:
+                canceled = datetime.fromtimestamp(sub.canceled_at, tz=timezone.utc)
+                if canceled >= m_start:
+                    active_count += 1
+
+        month_mrr = round(active_count * arpu, 2)
+
+        # Costs: sum items whose start_date <= last day of month
+        month_costs = 0.0
+        for item in costs_data.get("items", []):
+            try:
+                item_start = datetime.strptime(item["start_date"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except Exception:
+                item_start = launch
+            if item_start < m_end:
+                month_costs += item.get("amount_chf", 0)
+
+        labels.append(label)
+        mrr_series.append(month_mrr)
+        cost_series.append(round(month_costs, 2))
+
+    # Cumulative
+    cum_mrr, cum_cost = [], []
+    acc_m = acc_c = 0.0
+    for m, c in zip(mrr_series, cost_series):
+        acc_m += m; acc_c += c
+        cum_mrr.append(round(acc_m, 2))
+        cum_cost.append(round(acc_c, 2))
+
+    return {
+        "labels": labels,
+        "mrr_monthly": mrr_series,
+        "cost_monthly": cost_series,
+        "mrr_cumulative": cum_mrr,
+        "cost_cumulative": cum_cost,
+    }
+
+
+def get_metrics(fixed_costs_chf: float = 0.0, costs_data: dict = None) -> dict:
     now = time.time()
     if now - _cache["ts"] < CACHE_TTL and _cache["data"] is not None:
         return _cache["data"]
@@ -29,8 +118,8 @@ def get_metrics(fixed_costs_chf: float = 0.0) -> dict:
     stripe.api_key = api_key
 
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start  = today - timedelta(days=today.weekday())
-    month_start = today.replace(day=1)
+    week_start   = today - timedelta(days=today.weekday())
+    month_start  = today.replace(day=1)
     days28_start = today - timedelta(days=27)
 
     try:
@@ -65,7 +154,9 @@ def get_metrics(fixed_costs_chf: float = 0.0) -> dict:
                     monthly = amt * qty
                 mrr_cents += monthly
 
-        mrr_chf = mrr_cents / 100.0
+        mrr_chf  = mrr_cents / 100.0
+        pro_count = len(active_subs)
+        arpu      = mrr_chf / pro_count if pro_count > 0 else 0.0
 
         # New subscribers bucketing
         new_today = new_week = new_month = 0
@@ -83,41 +174,39 @@ def get_metrics(fixed_costs_chf: float = 0.0) -> dict:
             if created >= month_start:
                 new_month += 1
 
-        # ── Cancelled this month ───────────────────────────────────────────
-        cancelled_subs = []
-        params_c = {"status": "canceled", "limit": 100,
-                    "created": {"gte": _ts(month_start)}}
+        # ── All cancelled subs (for history + daily chart) ─────────────────
+        launch_date = (costs_data or {}).get("launch_date", month_start.strftime("%Y-%m-%d"))
+        try:
+            launch_dt = datetime.strptime(launch_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except Exception:
+            launch_dt = month_start
+
+        all_cancelled = []
+        params_ca = {"status": "canceled", "limit": 100, "created": {"gte": _ts(launch_dt)}}
         while True:
-            page = stripe.Subscription.list(**params_c)
-            cancelled_subs.extend(page.data)
+            page = stripe.Subscription.list(**params_ca)
+            all_cancelled.extend(page.data)
             if not page.has_more:
                 break
-            params_c["starting_after"] = page.data[-1].id
+            params_ca["starting_after"] = page.data[-1].id
 
-        cancellations_month = len(cancelled_subs)
+        cancellations_month = sum(
+            1 for s in all_cancelled
+            if datetime.fromtimestamp(s.created, tz=timezone.utc) >= month_start
+        )
 
-        # ── Cancelled in last 28 days for daily chart ──────────────────────
         daily_cancel: dict = defaultdict(int)
-        for sub in cancelled_subs:
-            if sub.canceled_at:
-                day_key = datetime.fromtimestamp(sub.canceled_at, tz=timezone.utc).strftime("%Y-%m-%d")
-                if datetime.fromtimestamp(sub.canceled_at, tz=timezone.utc) >= days28_start:
-                    daily_cancel[day_key] += 1
-        # Also fetch older cancellations within 28-day window not caught above
-        params_c28 = {"status": "canceled", "limit": 100,
-                      "created": {"gte": _ts(days28_start)}}
-        page28 = stripe.Subscription.list(**params_c28)
-        for sub in page28.data:
+        for sub in all_cancelled:
             if sub.canceled_at:
                 d = datetime.fromtimestamp(sub.canceled_at, tz=timezone.utc)
                 if d >= days28_start:
                     daily_cancel[d.strftime("%Y-%m-%d")] += 1
 
-        # ── Build ordered 28-day series ────────────────────────────────────
-        labels, series_new, series_cancel = [], [], []
+        # ── 28-day daily series ────────────────────────────────────────────
+        labels28, series_new, series_cancel = [], [], []
         for i in range(28):
             d = (days28_start + timedelta(days=i)).strftime("%Y-%m-%d")
-            labels.append(d)
+            labels28.append(d)
             series_new.append(daily_new.get(d, 0))
             series_cancel.append(daily_cancel.get(d, 0))
 
@@ -125,25 +214,31 @@ def get_metrics(fixed_costs_chf: float = 0.0) -> dict:
         last7_new    = sum(series_new[-7:])
         last7_cancel = sum(series_cancel[-7:])
         daily_net    = (last7_new - last7_cancel) / 7.0
-        pro_count    = len(active_subs)
-        projected_mrr = 0.0
-        if pro_count > 0:
-            arpu = mrr_chf / pro_count
-            projected_mrr = (pro_count + daily_net * 30) * arpu
-        else:
-            projected_mrr = mrr_chf
+        projected_mrr = (pro_count + daily_net * 30) * arpu if pro_count > 0 else mrr_chf
 
         # ── Net margin ─────────────────────────────────────────────────────
-        # Stripe fee: 2.9% + CHF 0.30 per active subscriber (monthly charge)
-        stripe_fee = mrr_chf * 0.029 + pro_count * 0.30
-        net_margin = mrr_chf - stripe_fee - fixed_costs_chf
+        stripe_fee  = mrr_chf * 0.029 + pro_count * 0.30
+        net_margin  = mrr_chf - stripe_fee - fixed_costs_chf
         net_margin_pct = (net_margin / mrr_chf * 100) if mrr_chf > 0 else 0.0
+
+        # ── Monthly history (costs vs MRR from launch) ─────────────────────
+        all_subs_for_history = active_subs + all_cancelled
+        monthly_history = {}
+        if costs_data:
+            monthly_history = _build_monthly_history(
+                launch_date=launch_date,
+                all_subs=all_subs_for_history,
+                arpu=arpu,
+                costs_data=costs_data,
+            )
 
         result = {
             "app": "rephase",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "mrr_chf": round(mrr_chf, 2),
+            "arpu_chf": round(arpu, 2),
             "pro_users_active": pro_count,
+            "daily_net": round(daily_net, 3),
             "new_today": new_today,
             "new_this_week": new_week,
             "new_this_month": new_month,
@@ -154,10 +249,11 @@ def get_metrics(fixed_costs_chf: float = 0.0) -> dict:
             "net_margin_chf": round(net_margin, 2),
             "net_margin_pct": round(net_margin_pct, 1),
             "chart": {
-                "labels": labels,
+                "labels": labels28,
                 "new_subscribers": series_new,
                 "cancellations": series_cancel,
             },
+            "monthly_history": monthly_history,
         }
 
     except Exception as e:

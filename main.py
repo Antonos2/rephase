@@ -110,10 +110,39 @@ async def admin_page():
 @app.get("/admin/metrics")
 async def admin_metrics(_: None = Depends(_check_admin)):
     from core.stripe_metrics import get_metrics
-    data = get_metrics(fixed_costs_chf=_FIXED_COSTS)
+    from core.costs import load_costs, total_monthly_chf
+    costs_data = load_costs()
+    fixed = total_monthly_chf(costs_data) or _FIXED_COSTS
+    data = get_metrics(fixed_costs_chf=fixed, costs_data=costs_data)
     if "error" in data:
         raise HTTPException(502, data["error"])
     return JSONResponse(data)
+
+@app.get("/admin/costs")
+async def get_costs(_: None = Depends(_check_admin)):
+    from core.costs import load_costs
+    return JSONResponse(load_costs())
+
+@app.post("/admin/costs")
+async def post_costs(payload: dict, _: None = Depends(_check_admin)):
+    from core.costs import save_costs, load_costs
+    import uuid as _uuid
+    costs_data = load_costs()
+    # Merge: replace items and phases; preserve launch_date if not sent
+    if "launch_date" in payload:
+        costs_data["launch_date"] = payload["launch_date"]
+    if "items" in payload:
+        # Assign id to new items that don't have one
+        for item in payload["items"]:
+            if not item.get("id"):
+                item["id"] = str(_uuid.uuid4())[:8]
+        costs_data["items"] = payload["items"]
+    if "phases" in payload:
+        costs_data["phases"] = payload["phases"]
+    save_costs(costs_data)
+    from core.stripe_metrics import _cache
+    _cache["ts"] = 0.0  # invalidate metrics cache
+    return JSONResponse({"ok": True})
 
 if __name__ == "__main__":
     import uvicorn
