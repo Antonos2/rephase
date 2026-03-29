@@ -161,6 +161,50 @@
   .phase-badge.active-phase { background: #34c759; color: #1a1a1a; }
   .phase-detail { flex: 1; color: #444; }
   .phase-cost { font-weight: 700; color: #1a1a1a; white-space: nowrap; }
+
+  /* ── Valutazione aziendale ── */
+  .val-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+               gap: 16px; margin-bottom: 20px; }
+  .val-card { background: #fff; border-radius: 12px; padding: 20px;
+              box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .val-card .label { font-size: 11px; font-weight: 600; color: #888;
+                     text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .val-card .value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .val-card .sub   { font-size: 12px; color: #888; margin-top: 5px; }
+  .val-card.accent .value { color: #34c759; }
+
+  .valuation-range {
+    background: #fff; border-radius: 12px; padding: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px;
+  }
+  .valuation-range .label { font-size: 11px; font-weight: 600; color: #888;
+                             text-transform: uppercase; letter-spacing: .06em;
+                             margin-bottom: 18px; }
+  .val-range-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; }
+  .val-range-item { text-align: center; padding: 12px 8px; position: relative; }
+  .val-range-item:not(:last-child)::after {
+    content: ''; position: absolute; right: 0; top: 20%; bottom: 20%;
+    width: 1px; background: #e8e8e8;
+  }
+  .val-range-item .rlabel { font-size: 11px; color: #888; margin-bottom: 6px; }
+  .val-range-item .rval { font-size: 22px; font-weight: 700; }
+  .val-range-item.min .rval { color: #888; }
+  .val-range-item.mid .rval { color: #34c759; font-size: 28px; }
+  .val-range-item.max .rval { color: #1e8c3a; }
+  .val-range-item .rmul { font-size: 11px; color: #aaa; margin-top: 3px; }
+
+  .proj-12-24 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+                margin-bottom: 20px; }
+  @media (max-width: 600px) { .proj-12-24 { grid-template-columns: 1fr; } }
+  .proj-card { background: #fff; border-radius: 12px; padding: 20px 24px;
+               box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .proj-card .label { font-size: 11px; font-weight: 600; color: #888;
+                      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; }
+  .proj-line { display: flex; justify-content: space-between; align-items: baseline;
+               padding: 5px 0; border-top: 1px solid #f4f4f4; font-size: 13px; }
+  .proj-line:first-of-type { border-top: none; }
+  .proj-line .pk { color: #666; }
+  .proj-line .pv { font-weight: 700; }
 </style>
 </head>
 <body>
@@ -276,6 +320,46 @@
       <canvas id="proj-chart" style="max-height:260px"></canvas>
     </div>
 
+    <!-- ══ SEZIONE VALUTAZIONE AZIENDALE ══ -->
+    <div class="section-title">Valutazione aziendale</div>
+
+    <!-- ARR + multiplo + churn cards -->
+    <div class="val-cards" id="val-cards-row"></div>
+
+    <!-- Range min / media / max -->
+    <div class="valuation-range">
+      <div class="label">Stima valutazione — metodo multiplo ARR (SaaS)</div>
+      <div class="val-range-grid">
+        <div class="val-range-item min">
+          <div class="rlabel">Minima</div>
+          <div class="rval" id="val-min">—</div>
+          <div class="rmul" id="val-min-mul">—</div>
+        </div>
+        <div class="val-range-item mid">
+          <div class="rlabel">Media stimata</div>
+          <div class="rval" id="val-mid">—</div>
+          <div class="rmul" id="val-mid-mul">—</div>
+        </div>
+        <div class="val-range-item max">
+          <div class="rlabel">Massima</div>
+          <div class="rval" id="val-max">—</div>
+          <div class="rmul" id="val-max-mul">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Proiezione 12 e 24 mesi -->
+    <div class="proj-12-24">
+      <div class="proj-card" id="proj-12"></div>
+      <div class="proj-card" id="proj-24"></div>
+    </div>
+
+    <!-- Grafico ARR storico -->
+    <div class="chart-card">
+      <div class="label">ARR storico mensile — dal lancio</div>
+      <canvas id="arr-chart" style="max-height:240px"></canvas>
+    </div>
+
   </div><!-- /dash-content -->
 </div><!-- /dashboard -->
 
@@ -341,6 +425,7 @@
       await loadCosts();
       renderHistoryChart(d.monthly_history);
       renderProjChart(d);
+      renderValuation(d);
       return true;
     } catch(e) {
       showError(e.message);
@@ -691,6 +776,165 @@
                maxTicksLimit: 14, maxRotation: 45 } },
           y: { beginAtZero: true, ticks: { color: '#888', font: { size: 11 },
                precision: 0 }, grid: { color: 'rgba(0,0,0,.06)' } }
+        }
+      }
+    });
+  }
+
+  // ── Valutazione aziendale ─────────────────────────────────────────────────
+  let _arrChart = null;
+
+  function _saasMultiples(monthlyGrowthPct, monthlyChurnPct) {
+    // Premium tier: growth >10%/month AND churn <3% → 5x-10x
+    if (monthlyGrowthPct >= 10 && monthlyChurnPct < 3) {
+      return { low: 5, high: 10, tier: 'Premium (crescita >10%, churn basso)' };
+    }
+    // Mid tier: growth 5-10% OR churn <5%
+    if (monthlyGrowthPct >= 5 || monthlyChurnPct < 5) {
+      return { low: 4, high: 7, tier: 'Mid (crescita buona o churn contenuto)' };
+    }
+    // Base: early-stage, <5% growth
+    return { low: 3, high: 5, tier: 'Base (early-stage SaaS)' };
+  }
+
+  function _chfM(v) {
+    if (v >= 1_000_000) return 'CHF ' + (v / 1_000_000).toFixed(2) + 'M';
+    if (v >= 1_000)     return 'CHF ' + (v / 1_000).toFixed(1) + 'k';
+    return 'CHF ' + v.toFixed(0);
+  }
+
+  function _projectN(d, months) {
+    const arpu     = d.arpu_chf || 0;
+    const dailyNet = d.daily_net || 0;
+    const projUsers = Math.max(0, d.pro_users_active + dailyNet * 30 * months);
+    const projMrr   = projUsers * arpu;
+    const projArr   = projMrr * 12;
+    // Use same growth rate assumption for projected period
+    const baseGrowth = d.pro_users_active > 0
+      ? (dailyNet * 30 / d.pro_users_active * 100) : 0;
+    const projChurn = d.pro_users_active > 0
+      ? (d.cancellations_month / d.pro_users_active * 100) : 0;
+    const mul = _saasMultiples(baseGrowth, projChurn);
+    return {
+      users:   Math.round(projUsers),
+      mrr:     Math.round(projMrr * 100) / 100,
+      arr:     Math.round(projArr * 100) / 100,
+      mul,
+      val_low:  Math.round(projArr * mul.low),
+      val_mid:  Math.round(projArr * (mul.low + mul.high) / 2),
+      val_high: Math.round(projArr * mul.high),
+    };
+  }
+
+  function renderValuation(d) {
+    if (!d) return;
+
+    const arr = d.mrr_chf * 12;
+    const monthlyGrowth = d.pro_users_active > 0
+      ? (d.daily_net * 30 / d.pro_users_active * 100) : 0;
+    const monthlyChurn = d.pro_users_active > 0
+      ? (d.cancellations_month / d.pro_users_active * 100) : 0;
+    const mul = _saasMultiples(monthlyGrowth, monthlyChurn);
+
+    // Cards row
+    const growthColor = monthlyGrowth >= 10 ? '#34c759' : monthlyGrowth >= 5 ? '#f5a623' : '#888';
+    const churnColor  = monthlyChurn < 2 ? '#34c759' : monthlyChurn < 5 ? '#f5a623' : '#e74c3c';
+    document.getElementById('val-cards-row').innerHTML = `
+      <div class="val-card accent">
+        <div class="label">ARR</div>
+        <div class="value">${_chfM(arr)}</div>
+        <div class="sub">MRR × 12</div>
+      </div>
+      <div class="val-card">
+        <div class="label">Multiplo SaaS</div>
+        <div class="value">${mul.low}x – ${mul.high}x</div>
+        <div class="sub">${mul.tier}</div>
+      </div>
+      <div class="val-card">
+        <div class="label">Crescita mensile</div>
+        <div class="value" style="color:${growthColor}">${monthlyGrowth.toFixed(1)}%</div>
+        <div class="sub">${(d.daily_net * 30).toFixed(1)} utenti netti/mese</div>
+      </div>
+      <div class="val-card">
+        <div class="label">Churn mensile</div>
+        <div class="value" style="color:${churnColor}">${monthlyChurn.toFixed(1)}%</div>
+        <div class="sub">${d.cancellations_month} disdette questo mese</div>
+      </div>
+    `;
+
+    // Range
+    const valMin = arr * mul.low;
+    const valMid = arr * (mul.low + mul.high) / 2;
+    const valMax = arr * mul.high;
+    document.getElementById('val-min').textContent    = _chfM(valMin);
+    document.getElementById('val-mid').textContent    = _chfM(valMid);
+    document.getElementById('val-max').textContent    = _chfM(valMax);
+    document.getElementById('val-min-mul').textContent = mul.low + 'x ARR';
+    document.getElementById('val-mid-mul').textContent = ((mul.low + mul.high) / 2).toFixed(1) + 'x ARR';
+    document.getElementById('val-max-mul').textContent = mul.high + 'x ARR';
+
+    // Projections 12 & 24 months
+    const p12 = _projectN(d, 12);
+    const p24 = _projectN(d, 24);
+    ['proj-12', 'proj-24'].forEach((id, idx) => {
+      const p = idx === 0 ? p12 : p24;
+      const months = idx === 0 ? 12 : 24;
+      document.getElementById(id).innerHTML = `
+        <div class="label">Proiezione ${months} mesi</div>
+        <div class="proj-line"><span class="pk">Utenti Pro</span><span class="pv">${p.users.toLocaleString('it-IT')}</span></div>
+        <div class="proj-line"><span class="pk">MRR</span><span class="pv">${_chfM(p.mrr)}</span></div>
+        <div class="proj-line"><span class="pk">ARR</span><span class="pv">${_chfM(p.arr)}</span></div>
+        <div class="proj-line"><span class="pk">Multiplo</span><span class="pv">${p.mul.low}x – ${p.mul.high}x</span></div>
+        <div class="proj-line"><span class="pk">Valutazione min</span><span class="pv">${_chfM(p.val_low)}</span></div>
+        <div class="proj-line"><span class="pk" style="font-weight:700;color:#1a1a1a">Valutazione media</span>
+             <span class="pv" style="color:#34c759">${_chfM(p.val_mid)}</span></div>
+        <div class="proj-line"><span class="pk">Valutazione max</span><span class="pv">${_chfM(p.val_high)}</span></div>
+      `;
+    });
+
+    // ARR history chart
+    renderArrChart(d.monthly_history);
+  }
+
+  function renderArrChart(history) {
+    if (!history || !history.labels || !history.labels.length) return;
+    const labels = history.labels.map(l => {
+      const [y, m] = l.split('-');
+      return new Date(+y, +m - 1).toLocaleDateString('it-IT', { month: 'short', year: '2-digit' });
+    });
+    const arrMonthly = history.mrr_monthly.map(v => Math.round(v * 12 * 100) / 100);
+
+    if (_arrChart) _arrChart.destroy();
+    const ctx = document.getElementById('arr-chart').getContext('2d');
+    _arrChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'ARR mensile',
+          data: arrMonthly,
+          borderColor: '#34c759',
+          backgroundColor: 'rgba(52,199,89,.12)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: '#34c759',
+          fill: true,
+          tension: 0.35,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: item => ' ARR: ' + _chfM(item.raw)
+          }}
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 } } },
+          y: { beginAtZero: true,
+               ticks: { color: '#888', font: { size: 11 }, callback: v => _chfM(v) },
+               grid: { color: 'rgba(0,0,0,.06)' } }
         }
       }
     });
