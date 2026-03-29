@@ -114,10 +114,25 @@ async def ws_analyze(websocket: WebSocket):
         if ext not in ALLOWED:
             await websocket.send_json({"type": "error", "error": f"Formato non supportato: {ext}"})
             return
-        file_bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=300)
-        if len(file_bytes) > MAX_SIZE:
+        total_size = meta.get("total_size", 0)
+        if total_size > MAX_SIZE:
             await websocket.send_json({"type": "error", "error": "File troppo grande"})
             return
+        if total_size > 0:
+            # Chunked upload: receive until total_size bytes collected
+            chunks = []
+            received = 0
+            while received < total_size:
+                chunk = await asyncio.wait_for(websocket.receive_bytes(), timeout=120)
+                chunks.append(chunk)
+                received += len(chunk)
+            file_bytes = b"".join(chunks)
+        else:
+            # Fallback: single binary message
+            file_bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=300)
+            if len(file_bytes) > MAX_SIZE:
+                await websocket.send_json({"type": "error", "error": "File troppo grande"})
+                return
     except (asyncio.TimeoutError, WebSocketDisconnect):
         return
 

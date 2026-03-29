@@ -77,6 +77,25 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 @keyframes rephase-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.75;transform:scale(1.04);}}
 .logo{animation:rephase-pulse 2.8s ease-in-out infinite;}
 .status.processing { color: #1e8c3a; font-weight: 600; animation: rephase-pulse 1.8s ease-in-out infinite; }
+/* ── Upload progress ── */
+.upload-progress-wrap {
+  display: none; margin: 10px 0 4px; padding: 10px 14px;
+  background: #f0f8f2; border: 1px solid #c3e6cb; border-radius: 10px;
+}
+.upload-progress-label {
+  font-size: 12px; font-weight: 600; color: #1e8c3a; margin-bottom: 6px;
+}
+.upload-progress-track {
+  background: #d4edda; border-radius: 4px; height: 6px; overflow: hidden;
+}
+.upload-progress-fill {
+  height: 100%; background: #34c759; width: 0%;
+  transition: width 0.08s linear;
+  box-shadow: 0 0 6px rgba(52,199,89,.5);
+}
+.upload-notice {
+  font-size: 11px; color: #555; margin-top: 6px; font-style: italic;
+}
 /* ── FFT live visualizer ── */
 .fft-live-wrap {
   display: none; position: relative; background: #1a1a1a;
@@ -165,6 +184,14 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
       <div class="status" id="status-verify">Analisi in corso...</div>
+      <!-- Upload progress -->
+      <div class="upload-progress-wrap" id="upload-progress-wrap">
+        <div class="upload-progress-label" id="upload-pct-text">Caricamento file... 0%</div>
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" id="upload-progress-fill"></div>
+        </div>
+        <div class="upload-notice" id="upload-notice"></div>
+      </div>
       <!-- FFT live visualizer -->
       <div class="fft-live-wrap" id="fft-live-wrap">
         <canvas id="fft-live-canvas"></canvas>
@@ -655,6 +682,8 @@ function _finalizeLiveChart(result) {
 document.getElementById('file-verify').addEventListener('change', async function() {
   const file = this.files[0];
   if (!file) return;
+
+  // Reset UI
   document.getElementById('result-verify').classList.add('hidden');
   document.getElementById('rv-detail').textContent = '';
   document.getElementById('btn-spectral').classList.add('hidden');
@@ -669,26 +698,62 @@ document.getElementById('file-verify').addEventListener('change', async function
   document.getElementById('fft-win-counter').textContent = 'Analisi in corso... finestra 0 di 20';
 
   const st = document.getElementById('status-verify');
-  st.textContent = 'Analisi in corso...';
-  st.className = 'status visible processing';
-
-  // Show live canvas and init chart
   const wrap = document.getElementById('fft-live-wrap');
-  wrap.style.display = 'block';
-  _initLiveChart();
+  const uploadWrap = document.getElementById('upload-progress-wrap');
+  const uploadFill = document.getElementById('upload-progress-fill');
+  const uploadLabel = document.getElementById('upload-pct-text');
+  const uploadNotice = document.getElementById('upload-notice');
+
+  const BIG_FILE = 50 * 1024 * 1024; // 50 MB
+
+  // Show upload bar immediately
+  uploadFill.style.width = '0%';
+  uploadLabel.textContent = 'Caricamento file... 0%';
+  uploadNotice.textContent = file.size > BIG_FILE
+    ? 'File grande \u2014 verr\u00e0 analizzato solo i primi 90 secondi.'
+    : '';
+  uploadWrap.style.display = 'block';
+  wrap.style.display = 'none';
+
+  st.textContent = 'Caricamento in corso...';
+  st.className = 'status visible processing';
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(proto + '//' + location.host + '/ws/analyze');
 
   ws.onopen = async () => {
-    ws.send(JSON.stringify({ filename: file.name }));
     const buf = await file.arrayBuffer();
-    ws.send(buf);
+    const CHUNK = 512 * 1024; // 512 KB per chunk
+    ws.send(JSON.stringify({ filename: file.name, total_size: buf.byteLength }));
+
+    let offset = 0;
+    while (offset < buf.byteLength) {
+      // Throttle: don't flood the socket buffer
+      while (ws.bufferedAmount > CHUNK * 6) {
+        await new Promise(r => setTimeout(r, 30));
+      }
+      const end = Math.min(offset + CHUNK, buf.byteLength);
+      ws.send(buf.slice(offset, end));
+      offset = end;
+      const pct = Math.round(offset / buf.byteLength * 100);
+      uploadFill.style.width = pct + '%';
+      uploadLabel.textContent = 'Caricamento file... ' + pct + '%';
+    }
+    // Upload complete — wait for analysis to start
+    uploadLabel.textContent = 'Caricamento completato \u2014 avvio analisi...';
+    st.textContent = 'Avvio analisi FFT...';
   };
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'window') {
+      // First window: switch from upload bar to FFT canvas
+      if (uploadWrap.style.display !== 'none') {
+        uploadWrap.style.display = 'none';
+        wrap.style.display = 'block';
+        _initLiveChart();
+        st.textContent = 'Analisi in corso...';
+      }
       _updateLiveChart(msg);
     } else if (msg.type === 'done') {
       const d = msg.result;
@@ -711,13 +776,15 @@ document.getElementById('file-verify').addEventListener('change', async function
     } else if (msg.type === 'error') {
       st.textContent = 'Errore: ' + msg.error;
       st.className = 'status visible';
+      uploadWrap.style.display = 'none';
       wrap.style.display = 'none';
     }
   };
 
   ws.onerror = () => {
-    st.textContent = 'Errore WebSocket — il backend \u00e8 in esecuzione?';
+    st.textContent = 'Errore WebSocket \u2014 il backend \u00e8 in esecuzione?';
     st.className = 'status visible';
+    uploadWrap.style.display = 'none';
     wrap.style.display = 'none';
   };
 });
