@@ -13,7 +13,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 TEMP_DIR = Path("/tmp/rephase")
 TEMP_DIR.mkdir(exist_ok=True)
 ALLOWED = {".mp3",".m4a",".wav",".flac",".aac",".aiff"}
-MAX_SIZE = 200*1024*1024
+MAX_SIZE = 500*1024*1024
 
 def cleanup(path):
     import time; time.sleep(60)
