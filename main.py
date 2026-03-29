@@ -2,7 +2,7 @@
 import os, uuid
 import aiofiles
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
@@ -80,6 +80,7 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+import secrets
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -87,6 +88,32 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def frontend():
     with open("static/index.html") as f:
         return f.read()
+
+# ── Admin ─────────────────────────────────────────────────────────────────────
+
+_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+_FIXED_COSTS    = float(os.environ.get("ADMIN_FIXED_COSTS_CHF", "0"))
+
+def _check_admin(authorization: str = Header(default=None)):
+    if not _ADMIN_PASSWORD:
+        raise HTTPException(503, "ADMIN_PASSWORD not configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Unauthorized")
+    if not secrets.compare_digest(authorization[7:].encode(), _ADMIN_PASSWORD.encode()):
+        raise HTTPException(401, "Wrong password")
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    with open("static/admin.html") as f:
+        return f.read()
+
+@app.get("/admin/metrics")
+async def admin_metrics(_: None = Depends(_check_admin)):
+    from core.stripe_metrics import get_metrics
+    data = get_metrics(fixed_costs_chf=_FIXED_COSTS)
+    if "error" in data:
+        raise HTTPException(502, data["error"])
+    return JSONResponse(data)
 
 if __name__ == "__main__":
     import uvicorn

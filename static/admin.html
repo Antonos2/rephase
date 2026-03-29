@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rephase — Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #e8e8e8; color: #1a1a1a; min-height: 100vh; }
+
+  /* ── Login overlay ── */
+  #login-overlay {
+    position: fixed; inset: 0; background: #e8e8e8;
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+  }
+  #login-box {
+    background: #fff; border-radius: 12px; padding: 40px 36px;
+    width: 340px; box-shadow: 0 4px 24px rgba(0,0,0,.10);
+    text-align: center;
+  }
+  #login-box .logo { font-size: 22px; font-weight: 700; letter-spacing: .03em; margin-bottom: 6px; }
+  #login-box .sub  { font-size: 13px; color: #666; margin-bottom: 28px; }
+  #login-box input {
+    width: 100%; padding: 11px 14px; border: 1.5px solid #ccc; border-radius: 8px;
+    font-size: 15px; outline: none; margin-bottom: 14px;
+    transition: border-color .2s;
+  }
+  #login-box input:focus { border-color: #34c759; }
+  #login-box button {
+    width: 100%; padding: 12px; background: #34c759; color: #1a1a1a;
+    border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: opacity .2s;
+  }
+  #login-box button:hover { opacity: .88; }
+  #login-err { color: #a32d2d; font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ── Dashboard ── */
+  #dashboard { display: none; padding: 28px 32px; max-width: 1100px; margin: 0 auto; }
+
+  header { display: flex; align-items: center; justify-content: space-between;
+           margin-bottom: 28px; }
+  header .title { font-size: 20px; font-weight: 700; }
+  header .title span { color: #34c759; }
+  header .meta { font-size: 12px; color: #666; text-align: right; }
+  header .meta button {
+    display: block; margin-top: 4px; padding: 5px 12px; background: #34c759;
+    border: none; border-radius: 6px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: opacity .2s;
+  }
+  header .meta button:hover { opacity: .82; }
+
+  /* ── Cards grid ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+           gap: 16px; margin-bottom: 20px; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 20px 20px 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .card .label { font-size: 11px; font-weight: 600; color: #888;
+                 text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .card .value { font-size: 28px; font-weight: 700; line-height: 1; }
+  .card .sub   { font-size: 12px; color: #888; margin-top: 5px; }
+  .card.accent .value { color: #34c759; }
+  .card.warn   .value { color: #e67e22; }
+  .card.neg    .value { color: #a32d2d; }
+
+  /* ── Wide cards ── */
+  .cards-wide { display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+                margin-bottom: 20px; }
+  @media (max-width: 700px) { .cards-wide { grid-template-columns: 1fr; } }
+  .card-wide { background: #fff; border-radius: 12px; padding: 20px;
+               box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .card-wide .label { font-size: 11px; font-weight: 600; color: #888;
+                      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+  .card-wide .breakdown { display: flex; gap: 24px; flex-wrap: wrap; }
+  .card-wide .breakdown .item { flex: 1; min-width: 90px; }
+  .card-wide .breakdown .item .v { font-size: 22px; font-weight: 700; }
+  .card-wide .breakdown .item .k { font-size: 11px; color: #888; margin-top: 2px; }
+
+  /* ── Chart ── */
+  .chart-card { background: #fff; border-radius: 12px; padding: 24px;
+                box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .chart-card .label { font-size: 11px; font-weight: 600; color: #888;
+                       text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+  .chart-card canvas { max-height: 220px; }
+
+  /* ── Loading / error ── */
+  #dash-status { text-align: center; padding: 60px 0; font-size: 15px; color: #888; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+         background: #34c759; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+</style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-overlay">
+  <div id="login-box">
+    <div class="logo">Rephase</div>
+    <div class="sub">Admin Dashboard</div>
+    <input type="password" id="pw-input" placeholder="Password" autocomplete="current-password">
+    <button onclick="doLogin()">Accedi</button>
+    <div id="login-err"></div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard">
+  <header>
+    <div class="title">Rephase <span>Admin</span></div>
+    <div class="meta">
+      <span id="last-updated">—</span>
+      <button onclick="loadMetrics()">↻ Aggiorna</button>
+    </div>
+  </header>
+
+  <div id="dash-status"><span class="dot"></span> Caricamento…</div>
+
+  <div id="dash-content" style="display:none">
+
+    <!-- Row 1: MRR, Pro users, projection, margin -->
+    <div class="cards" id="row-main"></div>
+
+    <!-- Row 2: New subscribers + cancellations -->
+    <div class="cards-wide">
+      <div class="card-wide">
+        <div class="label">Nuovi abbonati</div>
+        <div class="breakdown">
+          <div class="item"><div class="v" id="m-new-today">—</div><div class="k">Oggi</div></div>
+          <div class="item"><div class="v" id="m-new-week">—</div><div class="k">Settimana</div></div>
+          <div class="item"><div class="v" id="m-new-month">—</div><div class="k">Mese</div></div>
+        </div>
+      </div>
+      <div class="card-wide">
+        <div class="label">Cancellazioni mese</div>
+        <div class="breakdown">
+          <div class="item"><div class="v" id="m-cancel" style="color:#a32d2d">—</div><div class="k">Disdette</div></div>
+          <div class="item"><div class="v" id="m-net-month">—</div><div class="k">Net (acquisiti − disdette)</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-card">
+      <div class="label">Andamento giornaliero — ultime 4 settimane</div>
+      <canvas id="trend-chart"></canvas>
+    </div>
+
+  </div><!-- /dash-content -->
+</div><!-- /dashboard -->
+
+<script>
+  const API = '';
+  let _token = sessionStorage.getItem('rephase_admin_token') || '';
+  let _chart = null;
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  async function doLogin() {
+    const pw = document.getElementById('pw-input').value.trim();
+    if (!pw) return;
+    _token = pw;
+    const ok = await loadMetrics(true);
+    if (ok) {
+      sessionStorage.setItem('rephase_admin_token', _token);
+      document.getElementById('login-overlay').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+    } else {
+      document.getElementById('login-err').textContent = 'Password errata.';
+      _token = '';
+    }
+  }
+
+  document.getElementById('pw-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  // Auto-login if token in sessionStorage
+  if (_token) {
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    loadMetrics();
+  }
+
+  // Auto-refresh every 60s
+  setInterval(() => { if (_token) loadMetrics(); }, 60000);
+
+  // ── Load metrics ──────────────────────────────────────────────────────────
+  async function loadMetrics(silent = false) {
+    if (!silent) {
+      document.getElementById('dash-status').style.display = 'block';
+      document.getElementById('dash-content').style.display = 'none';
+    }
+    try {
+      const res = await fetch(API + '/admin/metrics', {
+        headers: { 'Authorization': 'Bearer ' + _token }
+      });
+      if (res.status === 401) return false;
+      if (!res.ok) {
+        const err = await res.text();
+        showError('Errore API: ' + err);
+        return false;
+      }
+      const d = await res.json();
+      render(d);
+      document.getElementById('last-updated').textContent =
+        'Aggiornato: ' + new Date(d.timestamp).toLocaleTimeString('it-IT');
+      document.getElementById('dash-status').style.display = 'none';
+      document.getElementById('dash-content').style.display = 'block';
+      return true;
+    } catch(e) {
+      showError(e.message);
+      return false;
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('dash-status').innerHTML =
+      '<span style="color:#a32d2d">⚠ ' + msg + '</span>';
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function chf(v) { return 'CHF ' + v.toFixed(2); }
+  function num(v) { return v.toLocaleString('it-IT'); }
+
+  function render(d) {
+    // Main cards
+    const marginColor = d.net_margin_chf >= 0 ? 'accent' : 'neg';
+    document.getElementById('row-main').innerHTML = `
+      <div class="card accent">
+        <div class="label">MRR</div>
+        <div class="value">${chf(d.mrr_chf)}</div>
+        <div class="sub">entrate mensili ricorrenti</div>
+      </div>
+      <div class="card">
+        <div class="label">Utenti Pro attivi</div>
+        <div class="value">${num(d.pro_users_active)}</div>
+        <div class="sub">abbonamenti attivi</div>
+      </div>
+      <div class="card">
+        <div class="label">Proiezione 30gg</div>
+        <div class="value">${chf(d.projected_mrr_chf)}</div>
+        <div class="sub">trend 7 giorni</div>
+      </div>
+      <div class="card ${marginColor}">
+        <div class="label">Margine netto</div>
+        <div class="value">${chf(d.net_margin_chf)}</div>
+        <div class="sub">${d.net_margin_pct.toFixed(1)}% · Stripe ${chf(d.stripe_fee_chf)} · Fissi ${chf(d.fixed_costs_chf)}</div>
+      </div>
+    `;
+
+    // New / cancel
+    document.getElementById('m-new-today').textContent  = num(d.new_today);
+    document.getElementById('m-new-week').textContent   = num(d.new_this_week);
+    document.getElementById('m-new-month').textContent  = num(d.new_this_month);
+    document.getElementById('m-cancel').textContent     = num(d.cancellations_month);
+    const net = d.new_this_month - d.cancellations_month;
+    const netEl = document.getElementById('m-net-month');
+    netEl.textContent = (net >= 0 ? '+' : '') + num(net);
+    netEl.style.color = net >= 0 ? '#34c759' : '#a32d2d';
+
+    // Chart
+    renderChart(d.chart);
+  }
+
+  function renderChart(c) {
+    const labels = c.labels.map(l => {
+      const d = new Date(l + 'T00:00:00Z');
+      return d.toLocaleDateString('it-IT', {day:'2-digit', month:'short'});
+    });
+    if (_chart) _chart.destroy();
+    const ctx = document.getElementById('trend-chart').getContext('2d');
+    _chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Nuovi abbonati',
+            data: c.new_subscribers,
+            backgroundColor: 'rgba(52,199,89,.75)',
+            borderColor: '#34c759',
+            borderWidth: 1,
+            borderRadius: 3,
+          },
+          {
+            label: 'Cancellazioni',
+            data: c.cancellations,
+            backgroundColor: 'rgba(163,45,45,.55)',
+            borderColor: '#a32d2d',
+            borderWidth: 1,
+            borderRadius: 3,
+          },
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { font: { size: 12 }, color: '#1a1a1a' } },
+          tooltip: { callbacks: {
+            title: items => items[0].label,
+            label: item => ' ' + item.dataset.label + ': ' + item.raw
+          }}
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#888', font: { size: 11 },
+               maxTicksLimit: 14, maxRotation: 45 } },
+          y: { beginAtZero: true, ticks: { color: '#888', font: { size: 11 },
+               precision: 0 }, grid: { color: 'rgba(0,0,0,.06)' } }
+        }
+      }
+    });
+  }
+</script>
+</body>
+</html>
