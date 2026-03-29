@@ -80,17 +80,30 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 /* ── FFT live visualizer ── */
 .fft-live-wrap {
   display: none; position: relative; background: #1a1a1a;
-  border-radius: 12px; overflow: hidden; margin: 14px 0; height: 230px;
+  border-radius: 12px; overflow: hidden; margin: 14px 0; height: 260px;
 }
 .fft-live-wrap canvas { display: block; width: 100%; height: 100%; }
-.fft-live-progress {
-  position: absolute; bottom: 0; left: 0; height: 3px;
-  background: #34c759; width: 0%; transition: width 0.1s linear;
+.fft-live-progress-wrap {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 22px;
+  background: rgba(10,10,10,.75); display: flex; align-items: center;
+  padding: 0 10px; gap: 8px;
+}
+.fft-live-progress-bar {
+  flex: 1; height: 5px; background: rgba(255,255,255,.1);
+  border-radius: 3px; overflow: hidden;
+}
+.fft-live-progress-fill {
+  height: 100%; background: #34c759; width: 0%;
+  transition: width 0.12s linear;
   box-shadow: 0 0 6px rgba(52,199,89,.7);
+}
+.fft-live-pct {
+  font-size: 10px; font-weight: 700; color: #34c759;
+  font-family: monospace; min-width: 34px; text-align: right;
 }
 .fft-live-badge {
   position: absolute; top: 12px; right: 14px;
-  background: rgba(18,18,18,.88); border: 1.5px solid #34c759;
+  background: rgba(18,18,18,.9); border: 1.5px solid #34c759;
   border-radius: 9px; padding: 7px 14px; font-size: 15px; font-weight: 700;
   color: #34c759; opacity: 0; transition: opacity .5s;
   backdrop-filter: blur(4px); pointer-events: none; white-space: nowrap;
@@ -98,9 +111,21 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 .fft-live-badge.fail  { border-color: #e74c3c; color: #e74c3c; }
 .fft-live-badge.show  { opacity: 1; }
 .fft-win-counter {
-  position: absolute; top: 12px; left: 14px; font-size: 10px;
-  font-weight: 600; color: rgba(52,199,89,.65); letter-spacing: .05em;
+  position: absolute; top: 10px; left: 14px; font-size: 11px;
+  font-weight: 600; color: rgba(255,255,255,.55); letter-spacing: .03em;
   font-family: monospace; pointer-events: none;
+}
+.fft-live-hz {
+  position: absolute; bottom: 32px; left: 14px;
+  font-size: 32px; font-weight: 700; color: #34c759;
+  font-family: 'SF Mono','Fira Code','Menlo',monospace;
+  pointer-events: none; line-height: 1;
+  text-shadow: 0 0 18px rgba(52,199,89,.45);
+  transition: color .3s;
+}
+.fft-live-hz small {
+  font-size: 13px; font-weight: 500;
+  color: rgba(52,199,89,.7); margin-left: 3px;
 }
 .spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
 .spectral-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
@@ -143,9 +168,15 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       <!-- FFT live visualizer -->
       <div class="fft-live-wrap" id="fft-live-wrap">
         <canvas id="fft-live-canvas"></canvas>
-        <div class="fft-win-counter" id="fft-win-counter">FINESTRA 0 / 20</div>
+        <div class="fft-win-counter" id="fft-win-counter">Analisi in corso... finestra 0 di 20</div>
+        <div class="fft-live-hz" id="fft-live-hz">— <small>Hz</small></div>
         <div class="fft-live-badge" id="fft-live-badge"></div>
-        <div class="fft-live-progress" id="fft-live-progress"></div>
+        <div class="fft-live-progress-wrap">
+          <div class="fft-live-progress-bar">
+            <div class="fft-live-progress-fill" id="fft-live-progress"></div>
+          </div>
+          <div class="fft-live-pct" id="fft-live-pct">0%</div>
+        </div>
       </div>
       <div id="result-verify" class="hidden">
         <div class="result-grid">
@@ -590,16 +621,26 @@ function _updateLiveChart(msg) {
     _fftLiveChart.data.datasets[2].data = [{ x: a4, y: a4amp }];
   }
   _fftLiveChart.update('none');
-  // Progress bar + window counter
-  const pct = ((msg.window_idx + 1) / msg.total_windows * 100).toFixed(1);
-  document.getElementById('fft-live-progress').style.width = pct + '%';
+  // Progress bar + window counter + Hz display
+  const winNum = msg.window_idx + 1;
+  const pctVal = Math.round(winNum / msg.total_windows * 100);
+  document.getElementById('fft-live-progress').style.width = pctVal + '%';
+  document.getElementById('fft-live-pct').textContent = pctVal + '%';
   document.getElementById('fft-win-counter').textContent =
-    'FINESTRA ' + (msg.window_idx + 1) + ' / ' + msg.total_windows +
-    (msg.a4_estimate ? '  ·  A4 est. ' + msg.a4_estimate.toFixed(1) + ' Hz' : '');
+    'Analisi in corso... finestra ' + winNum + ' di ' + msg.total_windows;
+  const hzEl = document.getElementById('fft-live-hz');
+  if (msg.a4_estimate) {
+    hzEl.innerHTML = msg.a4_estimate.toFixed(1) + ' <small>Hz</small>';
+  }
 }
 
 function _finalizeLiveChart(result) {
   document.getElementById('fft-live-progress').style.width = '100%';
+  document.getElementById('fft-live-pct').textContent = '100%';
+  document.getElementById('fft-win-counter').textContent = 'Analisi completata — 20 finestre analizzate';
+  const hzEl = document.getElementById('fft-live-hz');
+  hzEl.innerHTML = result.peak_freq.toFixed(1) + ' <small>Hz</small>';
+  hzEl.style.color = result.is_432 ? '#34c759' : '#e74c3c';
   const badge = document.getElementById('fft-live-badge');
   const cSign = result.cents_vs_432 >= 0 ? '+' : '';
   if (result.is_432) {
@@ -609,8 +650,6 @@ function _finalizeLiveChart(result) {
     badge.textContent = result.peak_freq.toFixed(1) + ' Hz  ' + cSign + result.cents_vs_432.toFixed(1) + ' cent';
     badge.className = 'fft-live-badge fail show';
   }
-  document.getElementById('fft-win-counter').textContent =
-    'ANALISI COMPLETATA  ·  A4 = ' + result.peak_freq.toFixed(3) + ' Hz';
 }
 
 document.getElementById('file-verify').addEventListener('change', async function() {
@@ -624,6 +663,10 @@ document.getElementById('file-verify').addEventListener('change', async function
   document.getElementById('fft-live-badge').className = 'fft-live-badge';
   document.getElementById('fft-live-badge').textContent = '';
   document.getElementById('fft-live-progress').style.width = '0%';
+  document.getElementById('fft-live-pct').textContent = '0%';
+  document.getElementById('fft-live-hz').innerHTML = '— <small>Hz</small>';
+  document.getElementById('fft-live-hz').style.color = '#34c759';
+  document.getElementById('fft-win-counter').textContent = 'Analisi in corso... finestra 0 di 20';
 
   const st = document.getElementById('status-verify');
   st.textContent = 'Analisi in corso...';
