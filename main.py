@@ -8,9 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
 
-# ── In-memory job store (polling-based analysis) ──────────────────────────────
+# ── In-memory job stores ──────────────────────────────────────────────────────
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
+
+_conv_jobs: dict = {}
+_conv_jobs_lock = threading.Lock()
 
 def _cleanup_jobs():
     """Background thread: remove jobs older than 10 minutes."""
@@ -21,6 +24,14 @@ def _cleanup_jobs():
             expired = [k for k, v in _jobs.items() if v.get("created_at", 0) < cutoff]
             for k in expired:
                 del _jobs[k]
+        with _conv_jobs_lock:
+            expired = [k for k, v in _conv_jobs.items() if v.get("created_at", 0) < cutoff]
+            for k in expired:
+                job = _conv_jobs.pop(k)
+                out = job.get("out_path", "")
+                if out and os.path.exists(out):
+                    try: os.remove(out)
+                    except Exception: pass
 
 threading.Thread(target=_cleanup_jobs, daemon=True).start()
 
@@ -95,6 +106,155 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
         stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
         stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
     return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4", headers=stats_headers)
+
+# ── Polling-based conversion ───────────────────────────────────────────────────
+
+@app.post("/convert/start")
+async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED:
+        raise HTTPException(400, f"Formato non supportato: {ext}")
+    if format not in ["mp3", "m4a"]:
+        format = "mp3"
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(413, "File troppo grande")
+
+    uid     = str(uuid.uuid4())
+    tmp_in  = str(TEMP_DIR / f"{uid}_in{ext}")
+    tmp_out = str(TEMP_DIR / f"{uid}_432.{format}")
+    with open(tmp_in, "wb") as fh:
+        fh.write(content)
+
+    job_id = str(uuid.uuid4())
+    with _conv_jobs_lock:
+        _conv_jobs[job_id] = {
+            "status":     "running",
+            "pct":        5,
+            "phase":      "decode",
+            "already_432": None,
+            "result":     None,
+            "error":      None,
+            "created_at": _time.time(),
+            "out_path":   tmp_out,
+            "format":     format,
+            "filename":   file.filename,
+        }
+
+    def _run():
+        def _progress(pct, phase=""):
+            with _conv_jobs_lock:
+                if job_id in _conv_jobs:
+                    _conv_jobs[job_id]["pct"]   = round(pct, 1)
+                    _conv_jobs[job_id]["phase"]  = phase
+
+        try:
+            # Pre-check: already 432?
+            _progress(5, "decode")
+            from core.converter import analyze_file as _af
+            pre_check = _af(tmp_in)
+            if pre_check.get("is_432"):
+                with _conv_jobs_lock:
+                    _conv_jobs[job_id].update({
+                        "status": "done", "pct": 100, "already_432": True, "result": pre_check
+                    })
+                return
+
+            _progress(15, "pre_analysis")
+            result = convert_to_432(tmp_in, tmp_out, max_seconds=90, progress_cb=_progress)
+            if not result["success"]:
+                with _conv_jobs_lock:
+                    _conv_jobs[job_id]["status"] = "error"
+                    _conv_jobs[job_id]["error"]  = result.get("error", "Errore sconosciuto")
+                return
+
+            with _conv_jobs_lock:
+                _conv_jobs[job_id].update({
+                    "status":     "done",
+                    "pct":        100,
+                    "already_432": result.get("already_432", False),
+                    "result":     result,
+                })
+        except Exception as e:
+            import traceback
+            print(f"[conv_job {job_id[:8]}] Exception:\n{traceback.format_exc()}", flush=True)
+            with _conv_jobs_lock:
+                _conv_jobs[job_id]["status"] = "error"
+                _conv_jobs[job_id]["error"]  = str(e)
+        finally:
+            if os.path.exists(tmp_in):
+                try: os.remove(tmp_in)
+                except Exception: pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/convert/status/{job_id}")
+async def convert_status(job_id: str):
+    with _conv_jobs_lock:
+        job = _conv_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(404, "Job non trovato o scaduto")
+        return JSONResponse({
+            "status":     job["status"],
+            "pct":        job["pct"],
+            "phase":      job.get("phase", ""),
+            "already_432": job.get("already_432"),
+            "result":     job.get("result"),
+            "error":      job.get("error"),
+        })
+
+
+@app.get("/convert/download/{job_id}")
+async def convert_download(job_id: str, background_tasks: BackgroundTasks):
+    with _conv_jobs_lock:
+        job = _conv_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(404, "Job non trovato o scaduto")
+        if job["status"] != "done":
+            raise HTTPException(400, "Conversione non completata")
+        if job.get("already_432"):
+            raise HTTPException(400, "File già a 432 Hz — nessun file da scaricare")
+        out_path = job["out_path"]
+        result   = job["result"]
+        fmt      = job["format"]
+        filename = job["filename"]
+
+    if not os.path.exists(out_path):
+        raise HTTPException(500, f"File output non trovato: {out_path}")
+
+    stem = Path(filename).stem
+    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes,X-Trimmed-Seconds"
+    stats_headers = {
+        "X-Trimmed-Seconds":     "90",
+        "X-Pre-Freq":            str(round(result.get("pre_freq", 0), 4)),
+        "X-Shift-Cents":         str(round(result.get("shift_applied", 0), 4)),
+        "X-Post-Freq":           str(round(result.get("post_freq", 0), 4)),
+        "X-Post-Cents":          str(round(result.get("post_cents_vs_432", 0), 4)),
+        "X-Certified":           str(result.get("certified", False)),
+        "X-Correction-Passes":   str(result.get("correction_passes", 1)),
+        "Access-Control-Expose-Headers": exposed,
+    }
+    if result.get("corr_pass_error"):
+        stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
+        stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
+
+    def _remove_job():
+        with _conv_jobs_lock:
+            _conv_jobs.pop(job_id, None)
+        if os.path.exists(out_path):
+            try: os.remove(out_path)
+            except Exception: pass
+
+    background_tasks.add_task(_remove_job)
+    return FileResponse(
+        path=out_path,
+        filename=f"{stem}_432.{fmt}",
+        media_type="audio/mpeg" if fmt == "mp3" else "audio/mp4",
+        headers=stats_headers,
+    )
+
 
 import asyncio, json as _json
 from fastapi.staticfiles import StaticFiles
