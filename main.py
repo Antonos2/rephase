@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os, uuid, threading
 import time as _time
+import json as _json
 import aiofiles
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header, Form
@@ -8,12 +9,48 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
 
-# ── In-memory job stores ──────────────────────────────────────────────────────
+# ── In-memory job store (analysis) ───────────────────────────────────────────
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
 
-_conv_jobs: dict = {}
-_conv_jobs_lock = threading.Lock()
+# ── File-based job store (conversion) ────────────────────────────────────────
+# Each conversion job is persisted to /tmp/rephase/jobs/{job_id}.json so that
+# a process restart on Render Free does not cause 404 during long conversions.
+_conv_jobs_lock = threading.Lock()   # guards all reads/writes to JOBS_DIR
+
+TEMP_DIR_EARLY = Path("/tmp/rephase")
+TEMP_DIR_EARLY.mkdir(exist_ok=True)
+JOBS_DIR = TEMP_DIR_EARLY / "jobs"
+JOBS_DIR.mkdir(exist_ok=True)
+
+
+def _write_conv_job(job_id: str, data: dict) -> None:
+    """Persist job dict to disk. Caller must hold _conv_jobs_lock."""
+    path = JOBS_DIR / f"{job_id}.json"
+    tmp  = path.with_suffix(".tmp")
+    with open(str(tmp), "w") as fh:
+        _json.dump(data, fh)
+    tmp.replace(path)   # atomic on POSIX
+
+
+def _read_conv_job(job_id: str) -> dict | None:
+    """Load job dict from disk. Returns None if missing or corrupt."""
+    path = JOBS_DIR / f"{job_id}.json"
+    try:
+        with open(str(path)) as fh:
+            return _json.load(fh)
+    except (FileNotFoundError, _json.JSONDecodeError):
+        return None
+
+
+def _delete_conv_job(job_id: str) -> None:
+    """Remove job JSON file. Caller must hold _conv_jobs_lock."""
+    path = JOBS_DIR / f"{job_id}.json"
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
 
 def _cleanup_jobs():
     """Background thread: remove completed/failed jobs older than 30 minutes.
@@ -21,30 +58,38 @@ def _cleanup_jobs():
     while True:
         _time.sleep(300)
         cutoff = _time.time() - 1800  # 30 minutes
+
+        # Analysis jobs (in-memory)
         with _jobs_lock:
             expired = [k for k, v in _jobs.items()
                        if v.get("status") in ("done", "error")
                        and v.get("last_accessed", v.get("created_at", 0)) < cutoff]
             for k in expired:
                 del _jobs[k]
+
+        # Conversion jobs (file-based)
         with _conv_jobs_lock:
-            expired = [k for k, v in _conv_jobs.items()
-                       if v.get("status") in ("done", "error")
-                       and v.get("last_accessed", v.get("created_at", 0)) < cutoff]
-            for k in expired:
-                job = _conv_jobs.pop(k)
-                out = job.get("out_path", "")
-                if out and os.path.exists(out):
-                    try: os.remove(out)
-                    except Exception: pass
+            for jpath in JOBS_DIR.glob("*.json"):
+                try:
+                    with open(str(jpath)) as fh:
+                        job = _json.load(fh)
+                    if (job.get("status") in ("done", "error")
+                            and job.get("last_accessed", job.get("created_at", 0)) < cutoff):
+                        out = job.get("out_path", "")
+                        if out and os.path.exists(out):
+                            try: os.remove(out)
+                            except Exception: pass
+                        jpath.unlink()
+                except Exception:
+                    pass
+
 
 threading.Thread(target=_cleanup_jobs, daemon=True).start()
 
 app = FastAPI(title="Rephase API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-TEMP_DIR = Path("/tmp/rephase")
-TEMP_DIR.mkdir(exist_ok=True)
+TEMP_DIR = TEMP_DIR_EARLY   # already created above
 ALLOWED = {".mp3",".m4a",".wav",".flac",".aac",".aiff"}
 MAX_SIZE = 500*1024*1024
 
@@ -142,50 +187,46 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
     job_id = str(uuid.uuid4())
     start_time = _time.time()
     with _conv_jobs_lock:
-        _conv_jobs[job_id] = {
-            "status":       "running",
-            "already_432":  None,
-            "result":       None,
-            "error":        None,
-            "created_at":   start_time,
-            "start_time":   start_time,
-            "out_path":     tmp_out,
-            "format":       format,
-            "filename":     file.filename,
-            "duration_sec": duration_sec,
+        _write_conv_job(job_id, {
+            "status":        "running",
+            "already_432":   None,
+            "result":        None,
+            "error":         None,
+            "created_at":    start_time,
+            "start_time":    start_time,
+            "out_path":      tmp_out,
+            "format":        format,
+            "filename":      file.filename,
+            "duration_sec":  duration_sec,
             "last_accessed": start_time,
-        }
+        })
 
     def _run():
+        def _patch(**kwargs):
+            with _conv_jobs_lock:
+                job = _read_conv_job(job_id)
+                if job is not None:
+                    job.update(kwargs)
+                    _write_conv_job(job_id, job)
+
         try:
             from core.converter import analyze_file as _af
             pre_check = _af(tmp_in)
             if pre_check.get("is_432"):
-                with _conv_jobs_lock:
-                    _conv_jobs[job_id].update({
-                        "status": "done", "already_432": True, "result": pre_check
-                    })
+                _patch(status="done", already_432=True, result=pre_check)
                 return
 
             result = convert_to_432(tmp_in, tmp_out, max_seconds=90, sox_timeout=sox_timeout)
             if not result["success"]:
-                with _conv_jobs_lock:
-                    _conv_jobs[job_id]["status"] = "error"
-                    _conv_jobs[job_id]["error"]  = result.get("error", "Errore sconosciuto")
+                _patch(status="error", error=result.get("error", "Errore sconosciuto"))
                 return
 
-            with _conv_jobs_lock:
-                _conv_jobs[job_id].update({
-                    "status":     "done",
-                    "already_432": result.get("already_432", False),
-                    "result":     result,
-                })
+            _patch(status="done", already_432=result.get("already_432", False), result=result)
+
         except Exception as e:
             import traceback
             print(f"[conv_job {job_id[:8]}] Exception:\n{traceback.format_exc()}", flush=True)
-            with _conv_jobs_lock:
-                _conv_jobs[job_id]["status"] = "error"
-                _conv_jobs[job_id]["error"]  = str(e)
+            _patch(status="error", error=str(e))
         finally:
             if os.path.exists(tmp_in):
                 try: os.remove(tmp_in)
@@ -203,23 +244,24 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
 @app.get("/convert/status/{job_id}")
 async def convert_status(job_id: str):
     with _conv_jobs_lock:
-        job = _conv_jobs.get(job_id)
+        job = _read_conv_job(job_id)
         if job is None:
             raise HTTPException(404, "Job non trovato o scaduto")
         job["last_accessed"] = _time.time()
-        return JSONResponse({
-            "status":     job["status"],
-            "start_time": job["start_time"],
-            "already_432": job.get("already_432"),
-            "result":     job.get("result"),
-            "error":      job.get("error"),
-        })
+        _write_conv_job(job_id, job)
+    return JSONResponse({
+        "status":      job["status"],
+        "start_time":  job["start_time"],
+        "already_432": job.get("already_432"),
+        "result":      job.get("result"),
+        "error":       job.get("error"),
+    })
 
 
 @app.get("/convert/download/{job_id}")
 async def convert_download(job_id: str, background_tasks: BackgroundTasks):
     with _conv_jobs_lock:
-        job = _conv_jobs.get(job_id)
+        job = _read_conv_job(job_id)
         if job is None:
             raise HTTPException(404, "Job non trovato o scaduto")
         if job["status"] != "done":
@@ -252,7 +294,7 @@ async def convert_download(job_id: str, background_tasks: BackgroundTasks):
 
     def _remove_job():
         with _conv_jobs_lock:
-            _conv_jobs.pop(job_id, None)
+            _delete_conv_job(job_id)
         if os.path.exists(out_path):
             try: os.remove(out_path)
             except Exception: pass
@@ -266,7 +308,7 @@ async def convert_download(job_id: str, background_tasks: BackgroundTasks):
     )
 
 
-import asyncio, json as _json
+import asyncio
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import secrets
