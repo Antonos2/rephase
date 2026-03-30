@@ -126,19 +126,28 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
     with open(tmp_in, "wb") as fh:
         fh.write(content)
 
+    # Probe duration to estimate conversion time
+    from core.converter import _get_duration
+    duration_sec  = _get_duration(tmp_in) or 0.0
+    estimated_sec = max(60, duration_sec * 2.5)
+    # SoX processes at most 90 s of audio; give 3× that as hard timeout
+    sox_timeout   = max(120, int(min(duration_sec, 90) * 3))
+    print(f"[convert/start] duration={duration_sec:.1f}s  estimated={estimated_sec:.0f}s  sox_timeout={sox_timeout}s", flush=True)
+
     job_id = str(uuid.uuid4())
     start_time = _time.time()
     with _conv_jobs_lock:
         _conv_jobs[job_id] = {
-            "status":     "running",
-            "already_432": None,
-            "result":     None,
-            "error":      None,
-            "created_at": start_time,
-            "start_time": start_time,
-            "out_path":   tmp_out,
-            "format":     format,
-            "filename":   file.filename,
+            "status":       "running",
+            "already_432":  None,
+            "result":       None,
+            "error":        None,
+            "created_at":   start_time,
+            "start_time":   start_time,
+            "out_path":     tmp_out,
+            "format":       format,
+            "filename":     file.filename,
+            "duration_sec": duration_sec,
         }
 
     def _run():
@@ -152,7 +161,7 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
                     })
                 return
 
-            result = convert_to_432(tmp_in, tmp_out, max_seconds=90)
+            result = convert_to_432(tmp_in, tmp_out, max_seconds=90, sox_timeout=sox_timeout)
             if not result["success"]:
                 with _conv_jobs_lock:
                     _conv_jobs[job_id]["status"] = "error"
@@ -177,7 +186,12 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
                 except Exception: pass
 
     threading.Thread(target=_run, daemon=True).start()
-    return JSONResponse({"job_id": job_id, "start_time": start_time})
+    return JSONResponse({
+        "job_id":        job_id,
+        "start_time":    start_time,
+        "duration_sec":  round(duration_sec, 1),
+        "estimated_sec": round(estimated_sec),
+    })
 
 
 @app.get("/convert/status/{job_id}")
@@ -436,4 +450,4 @@ def certify_report(payload: dict):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True, timeout_keep_alive=300)
+    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True, timeout_keep_alive=600)

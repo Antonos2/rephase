@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: "./build.sh"
-    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT --ws-max-size 536870912 --timeout-keep-alive 300"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT --ws-max-size 536870912 --timeout-keep-alive 600"
     envVars:
       - key: STRIPE_SECRET_KEY
         sync: false

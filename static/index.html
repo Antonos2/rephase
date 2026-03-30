@@ -1912,10 +1912,23 @@ document.getElementById('file-convert').addEventListener('change', function() {
       uploadWrap.style.display = 'none';
       return;
     }
-    const { job_id } = JSON.parse(xhr.responseText);
-    uploadLabel.textContent = 'Caricamento completato \u2014 avvio conversione...';
+    const resp = JSON.parse(xhr.responseText);
+    const { job_id, duration_sec, estimated_sec } = resp;
+
+    // Build duration / estimate message
+    const _fmtMin = (s) => s < 90 ? Math.round(s) + ' s' : (s / 60).toFixed(1) + ' min';
+    let infoLine = '';
+    if (duration_sec > 0) {
+      infoLine = 'Durata brano: ' + _fmtMin(duration_sec) +
+                 ' \u2014 tempo stimato conversione: ' + _fmtMin(estimated_sec);
+      if (duration_sec > 3600) {
+        infoLine += '\nFile molto lungo \u2014 la conversione potrebbe richiedere fino a ' +
+                    Math.ceil(estimated_sec / 60) + ' minuti';
+      }
+    }
+    uploadLabel.textContent = infoLine || 'Caricamento completato \u2014 avvio conversione...';
+    uploadWrap.style.display = infoLine ? 'block' : 'none';
     st.textContent = 'Conversione SoX in corso...';
-    uploadWrap.style.display = 'none';
     const sox = document.getElementById('sox-sub');
     sox.textContent = 'SoX in elaborazione...';
     sox.style.display = 'block';

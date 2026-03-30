@@ -280,7 +280,7 @@ def analyze_file(input_path):
     finally:
         if os.path.exists(tmp_wav): os.remove(tmp_wav)
 
-def convert_to_432(input_path, output_path, max_seconds=None):
+def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
     import shutil as _sh
 
     tmp_in  = tempfile.mktemp(suffix=".wav")
@@ -308,7 +308,7 @@ def convert_to_432(input_path, output_path, max_seconds=None):
         print(f"[convert] sox_start  shift={shift_cents:.4f}cent", flush=True)
         try:
             subprocess.run(["sox", tmp_in, tmp_432, "pitch", f"{shift_cents:.4f}"],
-                           check=True, capture_output=True)
+                           check=True, capture_output=True, timeout=sox_timeout)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode(errors="replace")[:400] if e.stderr else "(nessun stderr)"
             print(f"[convert] sox_ERROR  returncode={e.returncode}  stderr={stderr}", flush=True)
@@ -359,7 +359,7 @@ def convert_to_432(input_path, output_path, max_seconds=None):
                 max_shift = abs(shift_cents) * 3.0
                 shift_compensated = max(-max_shift, min(max_shift, shift_compensated))
                 print(f"[convert] >>> second pass: eff={eff:.4f}  shift_compensated={shift_compensated:+.4f} cent", flush=True)
-                subprocess.run(["sox", tmp_in, tmp_corr_out, "pitch", f"{shift_compensated:.4f}"], check=True, capture_output=True)
+                subprocess.run(["sox", tmp_in, tmp_corr_out, "pitch", f"{shift_compensated:.4f}"], check=True, capture_output=True, timeout=sox_timeout)
                 if ext == ".mp3":
                     subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"], check=True, capture_output=True)
                 elif ext == ".m4a":
