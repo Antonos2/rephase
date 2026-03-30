@@ -16,16 +16,21 @@ _conv_jobs: dict = {}
 _conv_jobs_lock = threading.Lock()
 
 def _cleanup_jobs():
-    """Background thread: remove jobs older than 10 minutes."""
+    """Background thread: remove completed/failed jobs older than 30 minutes.
+    Jobs with status='running' are NEVER removed."""
     while True:
         _time.sleep(300)
-        cutoff = _time.time() - 600
+        cutoff = _time.time() - 1800  # 30 minutes
         with _jobs_lock:
-            expired = [k for k, v in _jobs.items() if v.get("created_at", 0) < cutoff]
+            expired = [k for k, v in _jobs.items()
+                       if v.get("status") in ("done", "error")
+                       and v.get("last_accessed", v.get("created_at", 0)) < cutoff]
             for k in expired:
                 del _jobs[k]
         with _conv_jobs_lock:
-            expired = [k for k, v in _conv_jobs.items() if v.get("created_at", 0) < cutoff]
+            expired = [k for k, v in _conv_jobs.items()
+                       if v.get("status") in ("done", "error")
+                       and v.get("last_accessed", v.get("created_at", 0)) < cutoff]
             for k in expired:
                 job = _conv_jobs.pop(k)
                 out = job.get("out_path", "")
@@ -148,6 +153,7 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
             "format":       format,
             "filename":     file.filename,
             "duration_sec": duration_sec,
+            "last_accessed": start_time,
         }
 
     def _run():
@@ -200,6 +206,7 @@ async def convert_status(job_id: str):
         job = _conv_jobs.get(job_id)
         if job is None:
             raise HTTPException(404, "Job non trovato o scaduto")
+        job["last_accessed"] = _time.time()
         return JSONResponse({
             "status":     job["status"],
             "start_time": job["start_time"],

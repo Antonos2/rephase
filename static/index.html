@@ -1812,7 +1812,9 @@ document.getElementById('file-convert').addEventListener('change', function() {
       const r = await fetch(API + '/convert/status/' + jobId);
       if (!r.ok) {
         _stopPoll();
-        st.textContent = 'Errore: job non trovato (HTTP ' + r.status + ')';
+        st.textContent = r.status === 404
+          ? 'Conversione scaduta \u2014 riprova con un file pi\u00f9 corto'
+          : 'Errore HTTP ' + r.status;
         st.className = 'status visible';
         return;
       }
