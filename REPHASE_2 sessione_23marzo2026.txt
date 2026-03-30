@@ -1,0 +1,78 @@
+================================================================
+REPHASE — Checkpoint sessione 23 marzo 2026
+================================================================
+
+✅ COMPLETATO OGGI
+----------------------------------------------------------------
+1. Privacy Policy IT + EN (file Word)
+2. Termini e Condizioni IT + EN (file Word)
+   → Clausola extra-UE/Svizzera aggiunta
+3. Email admin@rephase.app creata su Infomaniak
+   → Configurata su Outlook (IMAP/SMTP mail.infomaniak.com)
+4. Account Infomaniak aggiornato: "Antonio Noseda" / Privato
+5. Account Stripe creato (admin@rephase.app, Svizzera)
+   → Modalità Sandbox attiva
+   → Prodotto 1 IN CORSO di creazione
+
+🔄 IN CORSO — STRIPE
+----------------------------------------------------------------
+Stai creando il primo prodotto abbonamento:
+  Nome:        Rephase Monthly - EUR
+  Descrizione: Abbonamento mensile Rephase - Conversione audio 432Hz
+  Importo:     € 4,95
+  Valuta:      EUR
+  Tipo:        Ricorrente
+  Periodo:     Mensile
+→ Clicca "Aggiungi prodotto" per salvarlo
+
+📋 PROSSIMI PASSI STRIPE (dopo aver salvato il primo prodotto)
+----------------------------------------------------------------
+1. Creare secondo prodotto abbonamento:
+   Nome:        Rephase Monthly - CHF
+   Descrizione: Abbonamento mensile Rephase - Conversione audio 432Hz
+   Importo:     CHF 5.50
+   Valuta:      CHF
+   Tipo:        Ricorrente
+   Periodo:     Mensile
+
+2. Recuperare le API keys (Sandbox):
+   → Menu Sviluppatori → Chiavi API
+   → Copiare "Publishable key" (pk_test_...)
+   → Copiare "Secret key" (sk_test_...)
+   → Salvarle in REPHASE_credenziali_private.txt
+
+3. Attivare Stripe Connect (per referral)
+   → Menu Altro → Connect
+
+4. Completare verifica identità per account Live
+   → "Passa all'account live" in alto
+
+🗺️ ROADMAP (stato aggiornato)
+----------------------------------------------------------------
+1. ✅ SSL + Go-Live          (ticket Infomaniak INK-VLD-43459-592)
+2. ⬜ Collaudo app
+3. ✅ Privacy & ToS
+4. 🔄 Stripe                ← IN CORSO
+5. ⬜ Dashboard referral
+6. ⬜ Email transazionale
+7. ⬜ Marketing pre-lancio
+8. ⬜ Analytics
+9. ⬜ Lancio
+10. ⬜ Mobile (futuro)
+
+🔧 STATO SERVER
+----------------------------------------------------------------
+- Uvicorn:    attivo, porta 8080 ✅
+- Apache:     NON ATTIVO ❌ (ticket aperto)
+- SSL cert:   valido fino al 21 giugno 2026 ✅
+
+🔑 STRIPE
+----------------------------------------------------------------
+- Dashboard: https://dashboard.stripe.com
+- Email:     admin@rephase.app
+- Modalità:  Sandbox (test)
+- API keys:  DA RECUPERARE (vedi passi sopra)
+
+================================================================
+Nuova sessione: incolla questo file e continua da dove hai lasciato
+================================================================

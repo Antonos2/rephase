@@ -1,0 +1,83 @@
+================================================================
+REPHASE — Checkpoint sessione 23 marzo 2026 (FINALE)
+================================================================
+
+✅ COMPLETATO OGGI
+----------------------------------------------------------------
+1. Privacy Policy IT + EN (file Word)
+2. Termini e Condizioni IT + EN (file Word)
+   → Clausola extra-UE/Svizzera aggiunta
+3. Account Infomaniak aggiornato: "Antonio Noseda" / Privato
+4. Email admin@rephase.app creata su Infomaniak
+   → Configurata su Outlook (IMAP/SMTP mail.infomaniak.com)
+5. Account Stripe creato ✅
+   → Email: admin@rephase.app
+   → Paese: Svizzera
+   → Modalità Sandbox attiva
+6. Prodotti Stripe creati ✅
+   → Rephase Monthly - EUR: € 4,95/mese (ricorrente)
+   → Rephase Monthly - CHF: CHF 5,50/mese (ricorrente)
+7. Chiavi API Stripe (Sandbox) salvate ✅
+   → pk_test_... (chiave pubblicabile)
+   → sk_test_... (chiave privata, ruotata, scadenza 7 giorni)
+   → Salvate in REPHASE_credenziali_private.txt
+
+⚠️ PROMEMORIA STRIPE
+----------------------------------------------------------------
+- Le chiavi sk_test_ scadono tra 7 giorni → rigenerare prima
+  di iniziare l'integrazione nel codice
+- Quando Apache torna online → passare all'account Live
+  e generare le chiavi pk_live_ / sk_live_
+- Attivare Stripe Connect (per referral) → Menu Altro → Connect
+  (da fare nella prossima sessione)
+
+📋 PROSSIMI PASSI (prossima sessione)
+----------------------------------------------------------------
+1. Attendere ticket Infomaniak (Apache porta 80/443)
+2. Quando Apache online:
+   a. curl -I https://rephase.app
+   b. Verificare lucchetto SSL 🔒
+   c. Testare upload e conversione audio
+3. Attivare Stripe Connect per referral
+4. Integrare Stripe nel codice FastAPI (backend Python)
+5. Completare verifica identità Stripe per account Live
+
+🗺️ ROADMAP (stato aggiornato)
+----------------------------------------------------------------
+1. ✅ SSL + Go-Live          (ticket Infomaniak INK-VLD-43459-592)
+2. ⬜ Collaudo app
+3. ✅ Privacy & ToS
+4. ✅ Stripe (Sandbox)
+5. ⬜ Dashboard referral
+6. ⬜ Email transazionale
+7. ⬜ Marketing pre-lancio
+8. ⬜ Analytics
+9. ⬜ Lancio
+10. ⬜ Mobile (futuro)
+
+🔧 STATO SERVER
+----------------------------------------------------------------
+- Uvicorn:    attivo, porta 8080 ✅
+- Apache:     NON ATTIVO ❌ (ticket aperto INK-VLD-43459-592)
+- SSL cert:   valido fino al 21 giugno 2026 ✅
+- Python:     /opt/jelastic-python314/bin/python3
+- Home:       /var/www/webroot/rephase
+
+🔑 ACCESSI
+----------------------------------------------------------------
+- Jelastic:    app.jpc.infomaniak.com
+- DNS:         manager.infomaniak.com → Antonio Noseda
+- Email:       admin@rephase.app (webmail: mail.infomaniak.com)
+- GitHub:      https://github.com/Antonos2/rephase
+- Token GH:    scadenza ~20 giugno 2026
+- Stripe:      dashboard.stripe.com (admin@rephase.app)
+- Credenziali: ~/Desktop/REPHASE/REPHASE_credenziali_private.txt
+
+⚠️ NOTE
+----------------------------------------------------------------
+- Chiavi Stripe Sandbox scadono tra 7 giorni → rigenerare!
+- Uvicorn si riavvia automaticamente con crontab @reboot
+- Credito Jelastic: CHF ~19.87
+================================================================
+Prossima sessione: attendere ticket Infomaniak → Apache online
+================================================================

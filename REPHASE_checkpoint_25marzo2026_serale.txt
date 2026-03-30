@@ -1,0 +1,160 @@
+================================================================
+REPHASE — Checkpoint sessione 25 marzo 2026 (SERALE)
+================================================================
+
+✅ COMPLETATO OGGI
+----------------------------------------------------------------
+1. Diagnostica server ✅
+   → DNS propagato: rephase.app → 83.228.252.67
+   → Uvicorn riavviato manualmente (era andato giù)
+   → App risponde: {"name":"Rephase API","version":"1.0.0",
+     "motto":"Out of phase? Get Rephase.","status":"online"}
+   → Frontend /static/index.html risponde 200 OK
+
+2. Frontend aggiornato con nuovi claim ✅
+   → Sezione "Perché 432 Hz?" riscritta con narrativa a strati:
+   → VECCHIO: "Il 440 Hz è uno standard industriale adottato nel
+     1953. Il 432 Hz vibra in armonia con le frequenze naturali
+     della Terra. Chi ascolta musica a 432 Hz descrive un suono
+     più caldo, rilassante e meno affaticante per il sistema
+     nervoso."
+   → NUOVO: "Il 440 Hz è uno standard industriale adottato nel
+     1953. Non è una legge della natura — è una scelta tecnica.
+     Il 432 Hz vibra in armonia con i ritmi naturali del corpo
+     umano. Il suono forma la materia: la scienza lo documenta
+     da secoli. Il corpo umano è prevalentemente acqua — e
+     risponde al 432 Hz in modo coerente e ripetibile.
+     Quello che senti dopo — decidilo tu."
+
+3. Nuovo documento strategico prodotto ✅
+   → REPHASE_Claim_Narrativa.docx
+     - I due claim (slogan + claim di sostanza)
+     - Narrativa a 3 strati per 3 tipi di pubblico
+     - Testi aggiornati homepage, sezione 432Hz, 3 post social
+     - Email influencer aggiornata
+     - 6 regole d'oro della comunicazione Rephase
+
+4. Nuovo ticket Infomaniak aperto ✅
+   → Secondo sollecito con riferimento a INK-VLD-43459-592
+   → Apache ancora offline ❌
+
+5. Contesto Alce 1&2 e Phaedra acquisito ✅
+   → Casse acustiche in rovere del Dr. Aldo Cehic che convertono
+     fisicamente 440Hz → 432Hz per natura del legno
+   → Phaedra = camera iperspettrale biofotonica che misura
+     la risposta del corpo umano alle frequenze
+   → Decisione: usare i CONCETTI, non i NOMI
+   → Trittico strategico:
+     - Rephase = protagonista visibile
+     - Alce = precedente fisico (concetto, no nome)
+     - Phaedra = prova scientifica (concetto, no nome)
+
+⚠️ BLOCCO ATTIVO
+----------------------------------------------------------------
+- Apache NON attivo ❌
+- Secondo ticket aperto (rif. INK-VLD-43459-592)
+- Nessuna risposta da Infomaniak
+- I DM agli influencer vanno mandati SOLO dopo Apache online
+
+📋 PROSSIMI PASSI (prossima sessione)
+----------------------------------------------------------------
+PRIORITÀ IMMEDIATA:
+1. Verificare risposta ticket Infomaniak
+2. Se Apache online:
+   a. curl -I https://rephase.app
+   b. Verificare lucchetto SSL 🔒
+   c. Testare upload e conversione audio dal browser
+   d. Mandare i 5 DM agli influencer
+
+PRIORITÀ ALTA (indipendenti da Apache):
+3. Aprire profili social Rephase (TikTok, Instagram, YouTube)
+   → Username: rephase o rephase.app
+   → Bio: "Out of phase? Get rephase. — 432 Hz certificato 🇨🇭
+     rephase.app"
+   → Email: admin@rephase.app
+4. Rigenerare chiavi Stripe sk_test_ (SCADONO A BREVE!)
+5. Integrare documentazione Phaedra quando arriva
+
+PRIORITÀ MEDIA:
+6. Integrare Stripe nel backend FastAPI
+7. Attivare Stripe Connect per referral
+8. Email transazionale
+9. Dashboard referral
+10. Completare verifica identità Stripe account Live
+
+FASE 2 (dopo lancio consolidato):
+11. App iOS + Android
+12. SEO — blog su rephase.app
+13. Analytics
+14. Consulente brevettuale per hardware
+
+🗺️ ROADMAP (stato aggiornato)
+----------------------------------------------------------------
+1. ✅ SSL + Go-Live         (ticket Infomaniak — in attesa)
+2. ⬜ Collaudo app
+3. ✅ Privacy & ToS
+4. ✅ Stripe (Sandbox)
+5. ⬜ Dashboard referral
+6. ⬜ Email transazionale
+7. ✅ Marketing pre-lancio  (strategia + claim + narrativa pronti)
+8. ⬜ Analytics
+9. ⬜ Lancio
+10. ⬜ App Mobile (fase 2)
+11. ⬜ Hardware (fase 3)
+
+🔧 STATO SERVER
+----------------------------------------------------------------
+- Uvicorn:    attivo, porta 8080 ✅ (riavviato manualmente oggi)
+- Apache:     NON ATTIVO ❌ (secondo ticket aperto)
+- SSL cert:   valido fino al 21 giugno 2026 ✅
+- Python:     /opt/jelastic-python314/bin/python3
+- Home:       /var/www/webroot/rephase
+- Frontend:   /var/www/webroot/rephase/static/index.html
+              → testo "Perché 432 Hz?" aggiornato ✅
+
+📁 DOCUMENTI PRODOTTI (cartella ~/Desktop/REPHASE/)
+----------------------------------------------------------------
+- REPHASE_credenziali_private.txt
+- REPHASE_checkpoint_23marzo2026.txt
+- REPHASE_checkpoint_25marzo2026.txt
+- REPHASE_checkpoint_25marzo2026_serale.txt  ← questo file
+- REPHASE_Marketing_Hardware.docx
+- REPHASE_Analisi_Competitor.docx
+- REPHASE_Indice_Master.docx
+- REPHASE_Claim_Narrativa.docx  ← NUOVO
+- Privacy Policy IT + EN (.docx)
+- Termini e Condizioni IT + EN (.docx)
+
+🧠 ASSET STRATEGICI (da integrare al momento giusto)
+----------------------------------------------------------------
+- Casse Alce 1&2 (Dr. Aldo Cehic) → prova fisica della
+  conversione 440→432Hz in natura. Da citare come CONCETTO
+  senza nominare il prodotto.
+- Camera Phaedra → dati biofotonici che dimostrano la risposta
+  del corpo umano al 432Hz. In arrivo documentazione test.
+  Da citare come DATO SCIENTIFICO senza nominare la tecnologia.
+- Claim di sostanza: "Convertiamo la musica a 432 Hz con misura
+  reale. Quello che senti dopo — decidilo tu."
+
+🔑 ACCESSI
+----------------------------------------------------------------
+- Jelastic:    app.jpc.infomaniak.com
+- DNS:         manager.infomaniak.com → Antonio Noseda
+- Email:       admin@rephase.app (webmail: mail.infomaniak.com)
+- GitHub:      https://github.com/Antonos2/rephase
+- Token GH:    scadenza ~20 giugno 2026
+- Stripe:      dashboard.stripe.com (admin@rephase.app)
+- Credenziali: ~/Desktop/REPHASE/REPHASE_credenziali_private.txt
+
+⚠️ NOTE URGENTI
+----------------------------------------------------------------
+- Chiavi Stripe sk_test_ scadono a breve → rigenerare!
+- Uvicorn riavviato manualmente oggi → verificare crontab
+- Credito Jelastic: CHF ~19.87
+- DM influencer pronti ma DA MANDARE SOLO dopo Apache online
+- Profili social da aprire subito (TikTok, Instagram, YouTube)
+- Documentazione Phaedra in arrivo → integrare nella narrativa
+
+================================================================
+Prossima sessione: Apache → lancio → DM influencer → social
+================================================================

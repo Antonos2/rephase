@@ -1,0 +1,154 @@
+================================================================
+REPHASE — Checkpoint sessione 25 marzo 2026
+================================================================
+
+✅ COMPLETATO OGGI
+----------------------------------------------------------------
+1. Diagnostica server ✅
+   → DNS propagato: rephase.app → 83.228.252.67
+   → Uvicorn attivo e funzionante sulla porta 8080
+   → App risponde internamente: {"name":"Rephase API","version":"1.0.0",
+     "motto":"Out of phase? Get Rephase.","status":"online"}
+   → Frontend /static/index.html risponde 200 OK
+
+2. Firewall Jelastic configurato ✅
+   → Regola "Uvicorn-8080" aggiunta — TCP, porta 8080, PERMETTI
+
+3. Endpoint (Punto finale) creato ✅
+   → Nome: Rephase-8080
+   → Porta privata: 8080 / Porta pubblica: 11589
+   → URL: node198201-env-6442086.jcloud.ik-server.com:11589
+
+4. Sollecito inviato a Infomaniak ✅
+   → Ticket INK-VLD-43459-592 — nessuna risposta ancora
+
+5. Documenti strategici prodotti ✅
+   → REPHASE_Marketing_Hardware.docx
+      (Air/Home/Pro — schede prodotto, testi web, 4 post social)
+   → REPHASE_Analisi_Competitor.docx
+      (6 competitor, forze/debolezze, gap analysis)
+   → REPHASE_Indice_Master.docx
+      (quadro completo fatto/da fare/accessi/stato server)
+
+6. Strategia marketing completa ✅
+   → Analisi 6 competitor con tabella sinottica
+   → Mappa canali dove sono i "pesci"
+      (YouTube, Facebook, Reddit, TikTok, Instagram, App, Blog)
+   → Piano 11 azioni in 3 fasi (priorità, costi, impatto)
+   → 5 micro-influencer identificati con profili:
+      - Lumirä @lumira._ (Instagram/TikTok) — 101K IG, 2M TikTok
+      - Faith Hunter @spirituallyfly (Instagram)
+      - Dr. Makeda Moore @drmakeda (Instagram)
+      - Hannah Holladay — hannahholladay.com (IG/TikTok/YouTube)
+      - Kino MacGregor @kinoyoga (Instagram/TikTok)
+   → 5 email personalizzate pronte per gli influencer
+   → 5 DM brevi pronti per Instagram/TikTok
+   → 4 modelli di accordo: barter, codice sconto, fee fissa, ambassador
+
+7. Linea hardware Rephase ideata ✅
+   → Rephase Air — dongle tascabile USB-C + jack 3.5mm
+   → Rephase Home — speaker desk con batteria ricaricabile
+   → Rephase Pro — processore professionale per impianti esistenti
+   → Modalità MUSIC/VOICE per gestire latenza su voce live
+   → Documento marketing hardware completo prodotto
+
+8. Analisi mercato e valutazione ✅
+   → MRR e SaaS spiegati
+   → Valore attuale stimato: CHF 2.000-3.000
+   → Valore post-lancio con MRR: formula 24-36x MRR
+   → Traguardo: 1.200.000 download (The 432 Player)
+   → Blockchain e brevetti discussi — decisione: prima il lancio
+
+⚠️ BLOCCO ATTIVO
+----------------------------------------------------------------
+- Apache NON attivo ❌
+- Ticket: INK-VLD-43459-592
+- Nessuna risposta da Infomaniak al 25/03/2026
+- I DM agli influencer vanno mandati SOLO dopo Apache online
+- TUTTO il resto è pronto — si aspetta solo questo
+
+📋 PROSSIMI PASSI (prossima sessione)
+----------------------------------------------------------------
+PRIORITÀ IMMEDIATA:
+1. Verificare risposta ticket Infomaniak
+2. Se Apache online:
+   a. curl -I https://rephase.app
+   b. Verificare lucchetto SSL 🔒
+   c. Testare upload e conversione audio dal browser
+   d. Mandare i 5 DM agli influencer
+
+PRIORITÀ ALTA (indipendenti da Apache):
+3. Aprire profili social Rephase (TikTok, Instagram, YouTube)
+   → Username: rephase o rephase.app
+   → Bio: "Out of phase? Get rephase. — 432 Hz certificato 🇨🇭 rephase.app"
+   → Email: admin@rephase.app
+4. Rigenerare chiavi Stripe sk_test_ (SCADONO A BREVE!)
+
+PRIORITÀ MEDIA:
+5. Integrare Stripe nel backend FastAPI
+6. Attivare Stripe Connect per referral
+7. Email transazionale
+8. Dashboard referral
+9. Completare verifica identità Stripe account Live
+
+FASE 2 (dopo lancio consolidato):
+10. App iOS + Android
+11. SEO — blog su rephase.app
+12. Analytics
+13. Consulente brevettuale per hardware
+
+🗺️ ROADMAP (stato aggiornato)
+----------------------------------------------------------------
+1. ✅ SSL + Go-Live         (ticket INK-VLD-43459-592 — in attesa)
+2. ⬜ Collaudo app
+3. ✅ Privacy & ToS
+4. ✅ Stripe (Sandbox)
+5. ⬜ Dashboard referral
+6. ⬜ Email transazionale
+7. ⬜ Marketing pre-lancio    (strategia completa pronta ✅)
+8. ⬜ Analytics
+9. ⬜ Lancio
+10. ⬜ App Mobile (fase 2)
+11. ⬜ Hardware (fase 3)
+
+🔧 STATO SERVER
+----------------------------------------------------------------
+- Uvicorn:    attivo, porta 8080 ✅
+- Apache:     NON ATTIVO ❌ (ticket INK-VLD-43459-592)
+- SSL cert:   valido fino al 21 giugno 2026 ✅
+- Python:     /opt/jelastic-python314/bin/python3
+- Home:       /var/www/webroot/rephase
+- Frontend:   /var/www/webroot/rephase/static/index.html
+
+📁 DOCUMENTI PRODOTTI (cartella ~/Desktop/REPHASE/)
+----------------------------------------------------------------
+- REPHASE_credenziali_private.txt
+- REPHASE_checkpoint_23marzo2026.txt
+- REPHASE_checkpoint_25marzo2026.txt  ← questo file
+- REPHASE_Marketing_Hardware.docx
+- REPHASE_Analisi_Competitor.docx
+- REPHASE_Indice_Master.docx
+- Privacy Policy IT + EN (.docx)
+- Termini e Condizioni IT + EN (.docx)
+
+🔑 ACCESSI
+----------------------------------------------------------------
+- Jelastic:    app.jpc.infomaniak.com
+- DNS:         manager.infomaniak.com → Antonio Noseda
+- Email:       admin@rephase.app (webmail: mail.infomaniak.com)
+- GitHub:      https://github.com/Antonos2/rephase
+- Token GH:    scadenza ~20 giugno 2026
+- Stripe:      dashboard.stripe.com (admin@rephase.app)
+- Credenziali: ~/Desktop/REPHASE/REPHASE_credenziali_private.txt
+
+⚠️ NOTE URGENTI
+----------------------------------------------------------------
+- Chiavi Stripe sk_test_ scadono a breve → rigenerare!
+- Uvicorn avviato manualmente → crontab @reboot attivo
+- Credito Jelastic: CHF ~19.87
+- DM influencer pronti ma DA MANDARE SOLO dopo Apache online
+- Profili social da aprire subito (TikTok, Instagram, YouTube)
+
+================================================================
+Prossima sessione: attendere Apache → poi lancio + DM influencer
+================================================================

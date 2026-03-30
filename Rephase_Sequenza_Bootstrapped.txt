@@ -1,0 +1,209 @@
+REPHASE — SEQUENZA BOOTSTRAPPED
+Ogni passo finanzia il successivo. Zero debiti, zero investitori.
+Data: 30 marzo 2026 — Zurigo, Svizzera
+================================================================================
+
+REGOLA D'ORO
+------------
+Non spendere mai più del 50% di quanto incassato nel mese precedente.
+Il restante 50% resta in cassa come riserva.
+Così non si rischia mai di andare in perdita per un investimento sbagliato.
+
+================================================================================
+
+FASE 0 — COSTO ZERO ASSOLUTO
+(da fare subito, nessun investimento richiesto)
+-----------------------------------------------
+
+1.  Deploy rephase.app su Infomaniak
+    → Server già pagato, solo configurazione DNS e SSL
+
+2.  Stripe Live attivo
+    → Completare verifica con IBAN e documento identità
+    → Inserire sk_live_... in start.sh
+
+3.  verify@rephase.app su Infomaniak
+    → Dopo ripristino organizzazione Noseda Quantum Devices
+
+4.  White Paper pubblicato su rephase.app/whitepaper
+    → File già pronti (IT + EN), solo upload
+
+5.  Pagina Q&A costruita in Claude Code
+    → Domande frequenti della community 432 Hz
+
+6.  Video test FFT 438.7 Hz
+    → iMovie (già installato) + ElevenLabs piano free
+    → Dati reali: 438.7 Hz originale → 431.8 Hz certificato
+    → Formato verticale TikTok + orizzontale YouTube
+
+7.  Post Reddit
+    → r/432hz, r/soundhealing, r/AudioEngineering
+    → Titolo: "We measured the most popular 432 Hz track on YouTube (58M views).
+       Here's what the FFT found: 438.7 Hz."
+
+8.  Post gruppi Facebook 432 Hz
+    → Gruppi da 50.000–200.000 membri
+    → Copy già scritto e pronto
+
+9.  Product Hunt launch
+    → Iscrizione gratuita
+    → Preparare assets: logo, descrizione, screenshot
+
+10. Directory gratuite
+    → AlternativeTo, G2, Capterra, Indie Hackers
+    → Una volta fatto, traffico passivo per sempre
+
+OBIETTIVO FASE 0: primi 5–10 utenti Pro paganti
+
+================================================================================
+
+FASE 1 — CON I PRIMI CHF 50–100 INCASSATI
+------------------------------------------
+
+11. OriginStamp blockchain
+    → Piano base gratuito, upgrade a pagamento se volume aumenta
+    → Inserire API key in start.sh
+
+12. Valutazione brevetto algoritmo FFT
+    → Consulenza iniziale con un brevettista svizzero
+    → Solo valutazione, non ancora deposito
+
+OBIETTIVO FASE 1: 10–20 utenti Pro stabili
+
+================================================================================
+
+FASE 2 — CON I PRIMI CHF 200–500 INCASSATI
+-------------------------------------------
+
+13. Registrazione marchio Rephase — EUIPO
+    → Classe 9 (software) + Classe 42 (servizi online)
+    → Costo totale ~CHF 850–1.200, inizia con la classe principale
+    → Prima EUIPO (Europa), poi IGE (Svizzera)
+
+14. Google Ads — CHF 5/giorno
+    → Solo dopo aver misurato il tasso di conversione organico
+    → Keyword: "432 hz converter", "432 hz verify", "432 hz certification"
+    → Accendi solo quando sai quanto vale un utente acquisito
+
+OBIETTIVO FASE 2: 30–50 utenti Pro stabili, MRR CHF 150–250
+
+================================================================================
+
+FASE 3 — CON I PRIMI CHF 500–1.000 INCASSATI
+---------------------------------------------
+
+15. Rewardful affiliati
+    → $49/mese — attiva solo quando hai i primi influencer pronti
+    → Micro-influencer nicchia 432 Hz: provvigione 30%, no fee fissa
+
+16. Baremetrics analytics
+    → Piano free fino a $10K MRR, poi $99/mese
+    → Churn, LTV, cohort analysis — dati per decisioni migliori
+
+17. Contatti B2B diretti
+    → Sound therapist, musicoterapisti, studi di registrazione
+    → Email fredda con White Paper allegato — costo zero
+    → Licenza istituzionale CHF 200–500/anno
+
+OBIETTIVO FASE 3: 100 utenti Pro, MRR CHF 495, break-even Fase 3
+
+================================================================================
+
+FASE 4 — CON I PRIMI CHF 2.000 INCASSATI
+-----------------------------------------
+
+18. App iOS
+    → Apple Developer Program: $99/anno
+    → Sviluppo con Claude Code — costo quasi zero
+    → Verifica + conversione + certificato PDF
+    → Prima iOS, Android dopo
+
+19. Google Ads budget aumentato
+    → Da CHF 5 a CHF 10/giorno se CAC < CHF 13
+
+20. PR a testate audio professionali
+    → Sound On Sound, Mix Magazine, Tape Op
+    → White Paper come credenziale — costo zero
+
+OBIETTIVO FASE 4: 200 utenti Pro, MRR CHF 990, App Store live
+
+================================================================================
+
+FASE 5 — CON I PRIMI CHF 5.000 INCASSATI
+-----------------------------------------
+
+21. App Android
+    → Google Play Developer: $25 una tantum
+
+22. API pubblica documentata
+    → Per sviluppatori che vogliono integrare Rephase
+    → Piano API a consumo — nuova fonte di revenue
+
+23. Prototipo hardware micro-convertitore
+    → USB/Lightning per conversione real-time dallo streaming
+    → Partnership con produttore hardware (no produzione diretta)
+
+24. Suno partnership
+    → Brani generati da Suno a 440 Hz → certificati Rephase a 432 Hz
+    → Bundle esclusivo: crea con Suno + certifica con Rephase
+
+OBIETTIVO FASE 5: 300 utenti Pro + clienti B2B + API revenue
+
+================================================================================
+
+FASE 6 — CON I PRIMI CHF 10.000 INCASSATI
+------------------------------------------
+
+25. Speaker portatile Bluetooth 432 Hz
+    → Hardware Rephase branded con conversione integrata
+    → Partnership produttore OEM — no rischio inventario
+
+26. Hardware pro — ingressi RCA/USB/XLR
+    → Per studi di registrazione e professionisti audio
+
+27. Poltrona relax con trasduttori 432 Hz
+    → Per centri benessere, spa, studi di sound healing
+    → Prodotto di punta del catalogo hardware
+
+28. Rephase Certified — programma certificazione
+    → I creator che usano Rephase possono mostrare il badge
+    → Crea ecosistema e network effect
+
+OBIETTIVO FASE 6: brand riconosciuto, valutazione CHF 100K+
+
+================================================================================
+
+FASE 7 — ECOSISTEMA COMPLETO (Anno 3+)
+---------------------------------------
+
+29. Rephase Radio — streaming 432 Hz certificato 24/7
+30. Marketplace brani certificati Rephase
+31. Streaming platform integration (Spotify, Apple Music)
+32. Acquisizioni brand complementari
+33. Exit strategico su Acquire.com o FE International
+    → Valutazione stimata: CHF 200K–500K con 500+ utenti Pro
+
+================================================================================
+
+METRICHE CHE SBLOCCANO OGNI FASE
+----------------------------------
+
+Fase 0 → Fase 1:   5 utenti Pro paganti
+Fase 1 → Fase 2:   20 utenti Pro, MRR CHF 100
+Fase 2 → Fase 3:   50 utenti Pro, MRR CHF 250, margine positivo
+Fase 3 → Fase 4:   100 utenti Pro, MRR CHF 495
+Fase 4 → Fase 5:   200 utenti Pro, MRR CHF 990, App live
+Fase 5 → Fase 6:   300 utenti Pro + clienti B2B, MRR CHF 1.500+
+Fase 6 → Fase 7:   500 utenti Pro + hardware venduto, MRR CHF 2.500+
+
+================================================================================
+
+PRINCIPIO FONDAMENTALE
+-----------------------
+Rephase non parla mai di sé stesso.
+Parla sempre dei numeri.
+I numeri parlano per Rephase.
+
+================================================================================
+© 2026 Rephase / Noseda Quantum Devices — rephase.app
+verify@rephase.app

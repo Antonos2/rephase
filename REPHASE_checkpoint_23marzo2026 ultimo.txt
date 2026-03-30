@@ -1,0 +1,90 @@
+================================================================
+REPHASE — Checkpoint sessione 23 marzo 2026 (SERALE)
+================================================================
+
+✅ COMPLETATO OGGI
+----------------------------------------------------------------
+1. DNS verificato e propagato globalmente ✅
+   → rephase.app → 83.228.252.67
+
+2. Uvicorn verificato attivo e funzionante ✅
+   → PID attivo, risponde su http://0.0.0.0:8080
+   → Log confermano 200 OK sulla route /
+   → App risponde: {"name":"Rephase API","version":"1.0.0",
+     "motto":"Out of phase? Get Rephase.","status":"online"}
+
+3. Firewall Jelastic configurato ✅
+   → Regola "Uvicorn-8080" aggiunta in Regole in entrata
+   → TCP, porta 8080, Destinazione: Tutto, Azione: PERMETTI
+
+4. Endpoint (Punto finale) creato ✅
+   → Nome: Rephase-8080
+   → Porta privata: 8080 / Porta pubblica: 11589
+   → URL: node198201-env-6442086.jcloud.ik-server.com:11589
+   → Non raggiungibile dall'esterno (bloccato a livello Jelastic)
+
+5. Frontend verificato ✅
+   → /static/index.html risponde 200 OK
+   → UI completa: Verifica, Converti, Prezzi, Footer
+
+⚠️ BLOCCO ATTIVO
+----------------------------------------------------------------
+- Apache NON attivo ❌
+- Ticket aperto: INK-VLD-43459-592
+- Nessuna risposta da Infomaniak al 23/03/2026 sera
+- TUTTO il resto è pronto — si aspetta solo questo
+
+📋 PROSSIMI PASSI (prossima sessione)
+----------------------------------------------------------------
+1. Verificare risposta ticket Infomaniak
+2. Quando Apache online:
+   a. curl -I https://rephase.app
+   b. Verificare lucchetto SSL 🔒
+   c. Testare upload e conversione audio dal browser
+3. Attivare Stripe Connect per referral
+4. Integrare Stripe nel codice FastAPI (backend Python)
+5. Completare verifica identità Stripe per account Live
+6. Rigenerare chiavi Stripe sk_test_ (scadenza 7 giorni!)
+
+🗺️ ROADMAP (stato aggiornato)
+----------------------------------------------------------------
+1. ✅ SSL + Go-Live         (ticket INK-VLD-43459-592 — in attesa)
+2. ⬜ Collaudo app
+3. ✅ Privacy & ToS
+4. ✅ Stripe (Sandbox)
+5. ⬜ Dashboard referral
+6. ⬜ Email transazionale
+7. ⬜ Marketing pre-lancio
+8. ⬜ Analytics
+9. ⬜ Lancio
+10. ⬜ Mobile (futuro)
+
+🔧 STATO SERVER
+----------------------------------------------------------------
+- Uvicorn:    attivo, porta 8080 ✅
+- Apache:     NON ATTIVO ❌ (ticket INK-VLD-43459-592)
+- SSL cert:   valido fino al 21 giugno 2026 ✅
+- Python:     /opt/jelastic-python314/bin/python3
+- Home:       /var/www/webroot/rephase
+- Frontend:   /var/www/webroot/rephase/static/index.html
+
+🔑 ACCESSI
+----------------------------------------------------------------
+- Jelastic:    app.jpc.infomaniak.com
+- DNS:         manager.infomaniak.com → Antonio Noseda
+- Email:       admin@rephase.app (webmail: mail.infomaniak.com)
+- GitHub:      https://github.com/Antonos2/rephase
+- Token GH:    scadenza ~20 giugno 2026
+- Stripe:      dashboard.stripe.com (admin@rephase.app)
+- Credenziali: ~/Desktop/REPHASE/REPHASE_credenziali_private.txt
+
+⚠️ NOTE URGENTI
+----------------------------------------------------------------
+- Chiavi Stripe sk_test_ scadono tra ~7 giorni → rigenerare!
+- Uvicorn avviato manualmente oggi → al prossimo reboot
+  si riavvia automaticamente via crontab @reboot
+- Credito Jelastic: CHF ~19.87
+
+================================================================
+Prossima sessione: attendere ticket Infomaniak → Apache online
+================================================================

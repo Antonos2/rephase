@@ -1,0 +1,81 @@
+================================================================
+REPHASE — Checkpoint 27 marzo 2026 (FINALE)
+================================================================
+
+⚠️ SITUAZIONE ATTUALE — URGENTE
+----------------------------------------------------------------
+- Ambiente Jelastic disattivato per credito esaurito
+- Credito ricaricato: CHF 20 ✅
+- Ticket aperto per ripristino: env-6442086, node198201
+- Risposta attesa da Infomaniak
+- NON creare nuovi ambienti — aspettare ripristino!
+
+✅ COMPLETATO NELLE ULTIME SESSIONI
+----------------------------------------------------------------
+1. Privacy Policy IT + EN (file Word) ✅
+2. Termini e Condizioni IT + EN (file Word) ✅
+   → Clausola extra-UE/Svizzera aggiunta
+3. Account Infomaniak: "Antonio Noseda" / Privato ✅
+4. Email admin@rephase.app su Outlook ✅
+5. Stripe Sandbox completo ✅
+   → 2 prodotti: EUR €4,95 e CHF 5,50/mese
+   → API keys salvate in credenziali
+   → Portale clienti configurato
+   → Codice portale salvato
+6. rephase.app era online con SSL ✅
+   → Verifica 432Hz funzionante
+   → Conversione: errore da investigare
+
+🐛 BUG / MIGLIORAMENTI FRONTEND
+----------------------------------------------------------------
+1. ❌ Drag & drop non funziona
+2. ✏️ Durante VERIFICA → "Analisi in corso..." verde pulsante
+3. ✏️ Durante CONVERSIONE → "Conversione in corso..." verde pulsante
+4. ⚠️ Scostamento: aggiungere spiegazione testuale per non tecnici
+5. ❌ Errore nella conversione → vedere log uvicorn
+6. ❌ Barra progresso conversione → semplificare
+
+📋 PROSSIMI PASSI (dopo ripristino Jelastic)
+----------------------------------------------------------------
+1. Verificare che uvicorn sia attivo:
+   tail -50 /var/www/webroot/rephase/uvicorn.log
+2. Testare conversione audio
+3. Fix bug frontend (lista sopra)
+4. Collegare IBAN EUR + CHF a Stripe
+5. Verifica identità Stripe → account Live
+6. Integrare Stripe nel codice FastAPI
+7. Email transazionale
+8. Marketing pre-lancio
+
+🗺️ ROADMAP
+----------------------------------------------------------------
+1. ✅ SSL + Go-Live
+2. 🔄 Collaudo app (verifica ok, conversione da fixare)
+3. ✅ Privacy & ToS
+4. ✅ Stripe Sandbox + portale clienti
+5. ⬜ Dashboard referral
+6. ⬜ Email transazionale
+7. ⬜ Marketing pre-lancio
+8. ⬜ Analytics
+9. ⬜ Lancio
+10. ⬜ Mobile (futuro)
+
+🔑 ACCESSI
+----------------------------------------------------------------
+- Jelastic:    app.jpc.infomaniak.com (via manager.infomaniak.com)
+- DNS/Email:   manager.infomaniak.com → Antonio Noseda
+- Email:       admin@rephase.app (webmail: mail.infomaniak.com)
+- GitHub:      https://github.com/Antonos2/rephase
+- Token GH:    scadenza ~20 giugno 2026
+- Stripe:      dashboard.stripe.com (admin@rephase.app)
+- Credenziali: ~/Desktop/REPHASE/REPHASE_credenziali_private.txt
+
+⚠️ NOTE
+----------------------------------------------------------------
+- Consumo Jelastic: ~CHF 5-6/mese → CHF 20 = ~3 mesi
+- Chiavi Stripe Sandbox scadono a breve → rigenerare
+- Aggiungere sempre certbot al PATH:
+  export PATH=$PATH:/opt/jelastic-python314/bin
+================================================================
+Prossima sessione: attendere risposta ticket Infomaniak
+================================================================

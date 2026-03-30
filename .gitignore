@@ -9,8 +9,9 @@ __pycache__/
 venv/
 .DS_Store
 /tmp/
-# credentials
+# credentials and session reports with tokens
 REPHASE_credenziali_private.*
+REPHASE_report_*.txt
 # Remotion build artifacts
 remotion/node_modules/
 remotion/out/
