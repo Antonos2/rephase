@@ -99,6 +99,21 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 }
 .cert-gen-btn:hover { background: #333; }
 .cert-gen-btn:disabled { background: #888; cursor: default; }
+.cert-gen-btn.locked { background: #888; cursor: not-allowed; opacity: .75; position: relative; }
+.cert-pro-badge { display:inline-block; background:#34c759; color:#fff; font-size:10px; font-weight:700;
+  border-radius:980px; padding:2px 9px; letter-spacing:.03em; vertical-align:middle; margin-left:8px; }
+.cert-desc { font-size:11px; color:#444; line-height:1.6; margin:2px 0 8px; }
+.cert-demo-link { font-size:11px; color:#1e8c3a; cursor:pointer; text-decoration:underline; }
+/* Demo modal */
+.cert-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55);
+  z-index:9999; align-items:center; justify-content:center; }
+.cert-modal-overlay.open { display:flex; }
+.cert-modal { background:#fff; border-radius:16px; padding:24px; max-width:680px; width:92%;
+  max-height:85vh; display:flex; flex-direction:column; box-shadow:0 8px 40px rgba(0,0,0,.25); }
+.cert-modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.cert-modal-title { font-size:14px; font-weight:700; color:#1a1a1a; }
+.cert-modal-close { background:none; border:none; font-size:20px; cursor:pointer; color:#666; line-height:1; padding:0 4px; }
+.cert-modal-body { overflow-y:auto; flex:1; }
 .cert-json {
   background: #0d1117; color: #58d68d; font-family: 'SF Mono','Fira Code','Menlo',monospace;
   font-size: 10.5px; line-height: 1.55; border-radius: 10px; padding: 14px 16px;
@@ -206,7 +221,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   font-size: 13px; font-weight: 500;
   color: rgba(52,199,89,.7); margin-left: 3px;
 }
-.spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #555; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
+.spectral-btn { background: none; border: 1px solid #bbb; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #1a1a1a; cursor: pointer; margin: 4px 0 8px 0; transition: border-color .15s, color .15s; }
 .spectral-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
 .fft-dl-btn { background: none; border: 1px solid #c8c8c8; border-radius: 980px; padding: 5px 14px; font-size: 11px; font-weight: 500; color: #1a1a1a; cursor: pointer; margin: 8px 0 4px; transition: border-color .15s, color .15s; display: block; }
 .fft-dl-btn:hover { border-color: #1e8c3a; color: #1e8c3a; }
@@ -215,7 +230,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 .spectral-chart-wrap { position: relative; height: 280px; margin-bottom: 14px; }
 .tech-table { width: 100%; border-collapse: collapse; font-family: 'SF Mono','Fira Code','Menlo','Courier New',monospace; font-size: 11px; }
 .tech-table td { padding: 5px 8px; border-bottom: 0.5px solid #c0c0c0; color: #1a1a1a; vertical-align: top; }
-.tech-table td:first-child { color: #555; width: 54%; }
+.tech-table td:first-child { color: #1a1a1a; width: 54%; }
 .tech-table tr:last-child td { border-bottom: none; }
 </style>
 </head>
@@ -307,9 +322,27 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         </div>
         <!-- Certificate & blockchain anchoring -->
         <div id="cert-section" class="hidden">
-          <button class="cert-gen-btn" id="cert-gen-btn" onclick="generateCertificate()">
-            Certifica questo brano &amp; Registra su Blockchain →
-          </button>
+          <div style="margin-bottom:10px;">
+            <input type="url" id="source-url-input"
+              placeholder="URL sorgente — es. https://youtube.com/watch?v=… (opzionale)"
+              style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #bbb;border-radius:8px;font-size:12px;color:#1a1a1a;background:#f5f5f5;outline:none;"
+              oninput="document.getElementById('cert-gen-btn').textContent='Certifica questo brano \u0026 Registra su Blockchain →'">
+          </div>
+          <div style="display:flex;align-items:center;gap:0;margin-bottom:4px;">
+            <button class="cert-gen-btn locked" id="cert-gen-btn"
+              title="Disponibile nel piano Pro Annuale — per professionisti che necessitano di certificazione legale dei brani"
+              onclick="if(!_isPlanProAnnual){alert('Disponibile nel piano Pro Annuale.\n\nPer professionisti che necessitano di certificazione legale dei brani.');return;}generateCertificate()"
+              style="flex:1;margin:0;">
+              🔒 Certifica questo brano &amp; Registra su Blockchain →
+            </button>
+            <span class="cert-pro-badge" style="flex-shrink:0;">Solo Pro Annuale</span>
+          </div>
+          <div class="cert-desc">
+            Genera un documento JSON con SHA256 del file, timestamp certificato Europe/Zurich,
+            5 campioni random su tutto il brano e anchor immutabile su blockchain Bitcoin.
+            Valido come prova legale della frequenza misurata.
+          </div>
+          <span class="cert-demo-link" onclick="openCertDemo()">Vedi esempio certificato →</span>
           <div id="cert-panel" class="hidden">
             <div id="cert-chain-status"></div>
             <pre class="cert-json" id="cert-json"></pre>
@@ -319,8 +352,17 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <button id="btn-spectral" class="spectral-btn hidden" onclick="toggleSpectral()">Analisi spettrale ↓</button>
         <div id="spectral-panel" class="spectral-panel hidden">
           <div class="spectral-chart-wrap"><canvas id="fft-chart"></canvas></div>
-          <div class="fft-dl-progress" id="fft-dl-progress-verify">● 0%</div>
-          <button class="fft-dl-btn" id="fft-dl-btn-verify" onclick="downloadFftChart('verify')">↓ Scarica grafico FFT</button>
+          <div class="spectral-chart-wrap" id="fft-zoom-verify-wrap" style="margin-top:10px;display:none;"><canvas id="fft-chart-zoom-verify"></canvas></div>
+          <div style="display:flex;flex-direction:row;gap:12px;align-items:center;margin:8px 0 4px;">
+            <div>
+              <div class="fft-dl-progress" id="fft-dl-progress-verify">● 0%</div>
+              <button class="fft-dl-btn" id="fft-dl-btn-verify" onclick="downloadFftChart('verify')">↓ Scarica grafico FFT</button>
+            </div>
+            <div id="fft-dl-zoom-verify-wrap" style="display:none;">
+              <div class="fft-dl-progress" id="fft-dl-progress-zoom-verify" style="display:none;">● 0%</div>
+              <button class="fft-dl-btn" id="fft-dl-btn-zoom-verify" onclick="downloadZoomChart('verify')">↓ Scarica grafico zoom</button>
+            </div>
+          </div>
           <table class="tech-table">
             <tr><td>A4 misurato (media pesata)</td><td id="tp-a4w">—</td></tr>
             <tr><td>A4 mediana</td><td id="tp-a4med">—</td></tr>
@@ -356,6 +398,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       <div style="font-size:11px;color:#666;margin:6px 2px 0;">Formati supportati: MP3 &middot; M4A &middot; WAV &middot; FLAC &middot; AAC &middot; AIFF</div>
 
       <div class="status" id="status-convert"></div>
+      <div id="sox-sub" style="display:none;text-align:center;font-size:12px;color:#1e8c3a;font-weight:600;padding:4px 0 8px;animation:rephase-pulse 1.2s ease-in-out infinite;"></div>
       <div id="result-already432" class="hidden" style="padding:20px 0;">
         <div class="verdict" id="cv-already-verdict" style="margin-bottom:0;">
           <div class="verdict-dot"></div>
@@ -365,7 +408,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       </div>
       <div id="result-convert" class="hidden" style="text-align:center;padding:20px 0;">
         <div style="font-size:32px;font-weight:700;color:#34c759;margin-bottom:8px;">432.0 Hz ✓</div>
-        <div style="font-size:14px;color:#555;margin-bottom:12px;">Il tuo brano è stato convertito con precisione svizzera.</div>
+        <div style="font-size:14px;color:#1a1a1a;margin-bottom:12px;">Il tuo brano è stato convertito con precisione svizzera.</div>
         <div id="cv-detail" style="font-size:11px;color:#444;margin-bottom:20px;line-height:1.7;white-space:pre-line;"></div>
         <a id="download-link" href="#" download><button class="btn-green">Scarica il file convertito</button></a>
         <div style="font-size:11px;color:#1e8c3a;margin-top:12px;">File cancellato dai server entro 60 secondi.</div>
@@ -373,11 +416,20 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div id="spectral-panel-conv" class="spectral-panel hidden" style="text-align:left;margin-top:8px;">
           <div id="spectral-conv-loading" class="hidden" style="padding:24px 0;text-align:center;">
             <div class="fft-dl-progress" id="spectral-conv-pct" style="display:block;font-size:15px;margin-bottom:6px;">● 0%</div>
-            <div style="font-size:11px;color:#555;" id="spectral-conv-label">Generazione spettro FFT in corso...</div>
+            <div style="font-size:11px;color:#1a1a1a;" id="spectral-conv-label">Generazione spettro FFT in corso...</div>
           </div>
           <div class="spectral-chart-wrap"><canvas id="fft-chart-conv"></canvas></div>
-          <div class="fft-dl-progress" id="fft-dl-progress-conv">● 0%</div>
-          <button class="fft-dl-btn" id="fft-dl-btn-conv" onclick="downloadFftChart('conv')">↓ Scarica grafico FFT</button>
+          <div class="spectral-chart-wrap" id="fft-zoom-wrap" style="margin-top:10px;display:none;"><canvas id="fft-chart-zoom"></canvas></div>
+          <div style="display:flex;flex-direction:row;gap:12px;align-items:center;margin:8px 0 4px;">
+            <div>
+              <div class="fft-dl-progress" id="fft-dl-progress-conv">● 0%</div>
+              <button class="fft-dl-btn" id="fft-dl-btn-conv" onclick="downloadFftChart('conv')">↓ Scarica grafico FFT</button>
+            </div>
+            <div id="fft-dl-zoom-conv-wrap" style="display:none;">
+              <div class="fft-dl-progress" id="fft-dl-progress-zoom-conv" style="display:none;">● 0%</div>
+              <button class="fft-dl-btn" id="fft-dl-btn-zoom-conv" onclick="downloadZoomChart('conv')">↓ Scarica grafico zoom</button>
+            </div>
+          </div>
           <table class="tech-table">
             <tr><td>Frequenza originale</td><td id="tpc-pre">—</td></tr>
             <tr><td>Frequenza convertita</td><td id="tpc-post">—</td></tr>
@@ -385,11 +437,11 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
             <tr><td>Scostamento post da 432 Hz</td><td id="tpc-cents">—</td></tr>
             <tr><td>Passaggi correttivi</td><td id="tpc-passes">—</td></tr>
             <tr id="tpc-corr-err-row" style="display:none"><td>Errore secondo pass</td><td id="tpc-corr-err" style="color:#a32d2d;">—</td></tr>
-            <tr><td>Certificato</td><td id="tpc-cert"><span id="tpc-cert-val">—</span><span id="tpc-cert-note" style="display:none;font-size:11px;color:#666;font-weight:400;"></span></td></tr>
+            <tr><td>Certificato</td><td id="tpc-cert"><span id="tpc-cert-val">—</span><span id="tpc-cert-note" style="display:none;font-size:11px;color:#1a1a1a;font-weight:400;"></span></td></tr>
           </table>
           <div style="margin-top:12px;">
             <button onclick="this.nextElementSibling.classList.toggle('hidden');this.textContent=this.nextElementSibling.classList.contains('hidden')?'\u25bc Note':'\u25b2 Note'" style="background:none;border:none;font-size:11px;color:#1a1a1a;cursor:pointer;padding:0;font-family:inherit;">&darr; Note</button>
-            <div class="hidden" style="margin-top:6px;font-family:'SF Mono','Fira Code','Menlo','Courier New',monospace;font-size:11px;color:#666;background:#c0c0c0;border-left:3px solid #888;padding:10px 12px;border-radius:0 6px 6px 0;line-height:1.6;">I formati M4A e AAC possono presentare un drift di pitch di &plusmn;0.09 cent rispetto a WAV/FLAC/MP3/AIFF dovuto alla compressione lossy AAC. Il valore &egrave; fisicamente impercettibile (soglia umana ~5 cent) e rientra ampiamente nella certificazione &plusmn;5 cent di Rephase.</div>
+            <div class="hidden" style="margin-top:6px;font-family:'SF Mono','Fira Code','Menlo','Courier New',monospace;font-size:11px;color:#1a1a1a;background:#c0c0c0;border-left:3px solid #888;padding:10px 12px;border-radius:0 6px 6px 0;line-height:1.6;">I formati M4A e AAC possono presentare un drift di pitch di &plusmn;0.09 cent rispetto a WAV/FLAC/MP3/AIFF dovuto alla compressione lossy AAC. Il valore &egrave; fisicamente impercettibile (soglia umana ~5 cent) e rientra ampiamente nella certificazione &plusmn;5 cent di Rephase.</div>
           </div>
         </div>
       </div>
@@ -423,6 +475,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <li>MP3 + M4A in uscita</li>
         <li>Report certificato PDF</li>
         <li>Conversione batch</li>
+        <li id="feat-blockchain" style="display:none;">🔒 Certificazione blockchain — documento legale con SHA256, timestamp e anchor Bitcoin</li>
       </ul>
     </div>
   </div>
@@ -434,8 +487,9 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 <script>
 const API="";
 let fmt="mp3",convTimer=null,convPct=0;
-let fftChart = null, fftChartConv = null;
+let fftChart = null, fftChartConv = null, fftChartZoom = null, fftChartZoomVerify = null;
 let convertOrigFile = null, convertBlob = null, convertHeaders = null;
+let _isPlanProAnnual = false;
 
 async function downloadFftChart(which) {
   const chart    = which === 'verify' ? fftChart : fftChartConv;
@@ -489,6 +543,53 @@ async function downloadFftChart(which) {
   btn.style.display  = 'block';
 }
 
+async function downloadZoomChart(which) {
+  const chart = which === 'verify' ? fftChartZoomVerify : fftChartZoom;
+  const btn   = document.getElementById('fft-dl-btn-zoom-' + which);
+  const prog  = document.getElementById('fft-dl-progress-zoom-' + which);
+  const stem  = which === 'conv' && convertHeaders
+    ? (convertHeaders.filename || 'rephase').replace(/\.[^.]+$/, '')
+    : (document.getElementById('file-verify')?.files[0]?.name || 'rephase').replace(/\.[^.]+$/, '');
+  if (!chart) return;
+
+  btn.style.display  = 'none';
+  prog.style.display = 'block';
+
+  let pct = 0;
+  const tick = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 12 + 5, 70);
+    prog.textContent = '● ' + Math.round(pct) + '%';
+  }, 80);
+
+  // Force white background via the plugin then re-render
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+  chart.resize();
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+
+  const dataUrl = chart.toBase64Image('image/png', 1.0);
+  clearInterval(tick);
+
+  while (pct < 100) {
+    pct = Math.min(pct + 6, 100);
+    prog.textContent = '● ' + Math.round(pct) + '%';
+    await new Promise(r => setTimeout(r, 18));
+  }
+  await new Promise(r => setTimeout(r, 180));
+
+  const a = document.createElement('a');
+  a.href     = dataUrl;
+  a.download = stem + '_fft_zoom.png';
+  a.click();
+
+  await new Promise(r => setTimeout(r, 350));
+  prog.style.display = 'none';
+  prog.textContent   = '● 0%';
+  btn.style.display  = 'block';
+}
+
+
 function toggleSpectral() {
   const panel = document.getElementById('spectral-panel');
   const btn   = document.getElementById('btn-spectral');
@@ -530,11 +631,37 @@ function renderSpectral(d, filename) {
   }
   // Vertical reference lines as dense point arrays
   const vline = x => Array.from({length: 51}, (_, i) => ({x, y: i / 50}));
+  // Shared plugins
+  const _wbpV = {
+    id: 'whiteBackground',
+    beforeDraw: chart => {
+      const c = chart.canvas.getContext('2d');
+      c.save(); c.fillStyle = '#ffffff';
+      c.fillRect(0, 0, chart.width, chart.height); c.restore();
+    }
+  };
+  const _makeRefLabels = refs => ({
+    id: 'refLabels',
+    afterDraw(chart) {
+      const {ctx, scales: {x, y}} = chart;
+      refs.forEach(r => {
+        const xPx = x.getPixelForValue(r.hz);
+        if (xPx < x.left || xPx > x.right) return;
+        ctx.save();
+        ctx.font = r.font; ctx.fillStyle = r.color; ctx.textAlign = 'center';
+        ctx.fillText(r.label, xPx, y.top + r.offsetY);
+        ctx.restore();
+      });
+    }
+  });
+
   if (fftChart) { fftChart.destroy(); fftChart = null; }
+  if (fftChartZoomVerify) { fftChartZoomVerify.destroy(); fftChartZoomVerify = null; }
   Chart.defaults.color = '#1a1a1a';
   const ctx = document.getElementById('fft-chart').getContext('2d');
   fftChart = new Chart(ctx, {
     type: 'scatter',
+    plugins: [_wbpV],
     data: { datasets: [
       { label: 'Spettro FFT', data: freqs.map((f,i) => ({x:f, y:amps[i]})),
         showLine:true, borderColor:'#1e8c3a', backgroundColor:'transparent',
@@ -550,10 +677,12 @@ function renderSpectral(d, filename) {
         pointRadius:7, pointHoverRadius:9, order:1 }
     ]},
     options: {
+      color: '#1a1a1a',
       responsive:true, maintainAspectRatio:false,
       plugins: {
         title: { display:true, text:'Spettro FFT \u2014 ' + filename,
                  font:{size:12,weight:'600'}, color:'#1a1a1a', padding:{bottom:10} },
+        subtitle: { color:'#1a1a1a' },
         legend: { display:true, position:'bottom',
                   labels:{font:{size:10}, color:'#1a1a1a', boxWidth:20, padding:10} }
       },
@@ -570,6 +699,64 @@ function renderSpectral(d, filename) {
       }
     }
   });
+
+  // ── Zoom 420–460 Hz (tab Verifica) ────────────────────────────────────────
+  const zvData = freqs.map((f,i) => ({x:f, y:amps[i]})).filter(p => p.x >= 415 && p.x <= 465);
+  const _refV = _makeRefLabels([
+    { hz:a4,  color:'#FF3B30', label: a4.toFixed(1)+' Hz', font:'bold 12px sans-serif', offsetY:18 },
+    { hz:432, color:'#34c759', label:'432 Hz',              font:'bold 13px sans-serif', offsetY:32 },
+    { hz:440, color:'#FF9500', label:'440 Hz',              font:'11px sans-serif',      offsetY:46 },
+  ]);
+  const _legendV = { display:true, position:'bottom',
+    labels:{ font:{size:10}, color:'#1a1a1a', boxWidth:20, padding:10 } };
+  fftChartZoomVerify = new Chart(
+    document.getElementById('fft-chart-zoom-verify').getContext('2d'),
+    {
+      type: 'scatter',
+      plugins: [_wbpV, _refV],
+      data: { datasets: [
+        { label: 'Spettro FFT', data: zvData,
+          showLine:true, borderColor:'#1e8c3a', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:0, tension:0, order:4 },
+        { label: a4.toFixed(1)+' Hz (misurato)', data: vline(a4),
+          showLine:true, borderColor:'#FF3B30', backgroundColor:'transparent',
+          borderWidth:2, borderDash:[6,4], pointRadius:0, order:3 },
+        { label: '432 Hz ←', data: vline(432),
+          showLine:true, borderColor:'#34c759', backgroundColor:'transparent',
+          borderWidth:2, borderDash:[6,4], pointRadius:0, order:2 },
+        { label: '440 Hz', data: vline(440),
+          showLine:true, borderColor:'#FF9500', backgroundColor:'transparent',
+          borderWidth:1.5, borderDash:[5,5], pointRadius:0, order:2 },
+        { label: 'A4: '+a4.toFixed(1)+' Hz', data:[{x:a4, y:a4Amp}],
+          backgroundColor:'#FF3B30', borderColor:'#cc2a20',
+          pointRadius:7, pointHoverRadius:9, order:1 }
+      ]},
+      options: {
+        color: '#1a1a1a',
+        responsive:true, maintainAspectRatio:false,
+        plugins: {
+          legend: _legendV,
+          title: { display:true,
+            text: 'Dettaglio zona A4 \u2014 420\u2013460 Hz',
+            font:{size:12,weight:'600'}, color:'#1a1a1a', padding:{bottom:4} },
+          subtitle: { display:false },
+        },
+        scales: {
+          x: { type:'linear', min:420, max:460,
+               title:{display:true, text:'Frequenza (Hz)', font:{size:10}, color:'#1a1a1a'},
+               ticks:{ color:'#1a1a1a', font:{size:10},
+                 callback: v => [420,425,430,432,435,440,445,450,455,460].includes(v) ? v : '' },
+               grid:{ color:'rgba(0,0,0,0.07)' } },
+          y: { min:0, max:1,
+               title:{display:true, text:'Ampiezza norm.', font:{size:10}, color:'#1a1a1a'},
+               ticks:{ color:'#1a1a1a', font:{size:10} },
+               grid:{ color:'rgba(0,0,0,0.07)' } }
+        }
+      }
+    }
+  );
+  document.getElementById('fft-zoom-verify-wrap').style.display = '';
+  document.getElementById('fft-dl-zoom-verify-wrap').style.display = '';
   document.getElementById('btn-spectral').classList.remove('hidden');
 }
 async function toggleSpectralConv() {
@@ -587,6 +774,7 @@ async function toggleSpectralConv() {
     // Show loading indicator, hide chart canvas
     loading.classList.remove('hidden');
     document.getElementById('fft-chart-conv').style.visibility = 'hidden';
+    document.getElementById('fft-zoom-wrap').style.display = 'none';
     document.getElementById('fft-dl-btn-conv').style.display = 'none';
 
     // Animate progress while waiting for /verify responses
@@ -631,6 +819,8 @@ async function toggleSpectralConv() {
 
       loading.classList.add('hidden');
       document.getElementById('fft-chart-conv').style.visibility = '';
+      document.getElementById('fft-zoom-wrap').style.display = '';
+      document.getElementById('fft-dl-zoom-conv-wrap').style.display = '';
       renderSpectralConvert(origData, convData, convertHeaders);
       btn.textContent = 'Analisi spettrale \u2191';
       document.getElementById('fft-dl-btn-conv').style.display = '';
@@ -695,58 +885,160 @@ function renderSpectralConvert(origData, convData, h) {
     }
   }
   const vline = x => Array.from({length: 51}, (_, i) => ({x, y: i / 50}));
-  if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
+  // Plugin inline white background — definitivo
+  const _wbp = {
+    id: 'whiteBackground',
+    beforeDraw: chart => {
+      const ctx = chart.canvas.getContext('2d');
+      ctx.save(); ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, chart.width, chart.height);
+      ctx.restore();
+    }
+  };
+
   Chart.defaults.color = '#1a1a1a';
-  const ctx = document.getElementById('fft-chart-conv').getContext('2d');
-  fftChartConv = new Chart(ctx, {
-    type: 'scatter',
-    data: { datasets: [
-      { label: 'Originale (' + h.preFreq.toFixed(1) + ' Hz)',
-        data: freqsO.map((f,i) => ({x:f, y:ampsO[i]})),
-        showLine:true, borderColor:'#888', backgroundColor:'transparent',
-        borderWidth:1.5, pointRadius:0, tension:0, order:4 },
-      { label: 'Convertito (432 Hz)',
-        data: freqsC.map((f,i) => ({x:f, y:ampsC[i]})),
-        showLine:true, borderColor:'#34c759', backgroundColor:'transparent',
-        borderWidth:1.5, pointRadius:0, tension:0, order:3 },
-      { label: '432 Hz', data: vline(432),
-        showLine:true, borderColor:'rgba(210,45,45,0.75)', backgroundColor:'transparent',
-        borderWidth:1.5, borderDash:[6,4], pointRadius:0, order:2 },
-      { label: 'A4 post: ' + a4post.toFixed(1) + ' Hz', data: [{x:a4post, y:a4Amp}],
-        backgroundColor:'#34c759', borderColor:'#1e8c3a',
-        pointRadius:7, pointHoverRadius:9, order:1 }
-    ]},
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins: {
-        title: {
-          display: true,
-          text: 'Spettro FFT \u2014 confronto pre/post conversione',
-          font: {size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:2}
+  if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
+  if (fftChartZoom) { fftChartZoom.destroy(); fftChartZoom = null; }
+
+  const _ds = [
+    { label: 'Originale (' + h.preFreq.toFixed(1) + ' Hz)',
+      data: freqsO.map((f,i) => ({x:f, y:ampsO[i]})),
+      showLine:true, borderColor:'#888', backgroundColor:'transparent',
+      borderWidth:1.5, pointRadius:0, tension:0, order:4 },
+    { label: 'Convertito (432 Hz)',
+      data: freqsC.map((f,i) => ({x:f, y:ampsC[i]})),
+      showLine:true, borderColor:'#34c759', backgroundColor:'transparent',
+      borderWidth:1.5, pointRadius:0, tension:0, order:3 },
+    { label: '432 Hz', data: vline(432),
+      showLine:true, borderColor:'rgba(210,45,45,0.75)', backgroundColor:'transparent',
+      borderWidth:1.5, borderDash:[6,4], pointRadius:0, order:2 },
+    { label: '440 Hz', data: vline(440),
+      showLine:true, borderColor:'rgba(255,149,0,0.75)', backgroundColor:'transparent',
+      borderWidth:1.5, borderDash:[6,4], pointRadius:0, order:2 },
+    { label: 'A4 post: ' + a4post.toFixed(1) + ' Hz', data: [{x:a4post, y:a4Amp}],
+      backgroundColor:'#34c759', borderColor:'#1e8c3a',
+      pointRadius:7, pointHoverRadius:9, order:1 }
+  ];
+
+  const _legendOpt = { display:true, position:'bottom',
+    labels:{ font:{size:10}, color:'#1a1a1a', boxWidth:20, padding:10 } };
+
+  // ── Grafico principale ────────────────────────────────────────────────────
+  fftChartConv = new Chart(
+    document.getElementById('fft-chart-conv').getContext('2d'),
+    {
+      type: 'scatter',
+      plugins: [_wbp],
+      data: { datasets: _ds },
+      options: {
+        color: '#1a1a1a',
+        responsive:true, maintainAspectRatio:false,
+        plugins: {
+          legend: _legendOpt,
+          title: {
+            display: true,
+            text: 'Spettro FFT \u2014 confronto pre/post conversione',
+            font:{size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:2}
+          },
+          subtitle: {
+            display: !!(h.filename),
+            text: h.filename
+              ? h.filename + '  \u00b7  ' + (h.displayTime||'') + '  \u00b7  SHA256\u202f:\u202f' + (h.sha256Short||'')
+              : '',
+            font:{size:10, weight:'400'}, color:'#1a1a1a', padding:{bottom:10}
+          },
         },
-        subtitle: {
-          display: !!(h.filename),
-          text: h.filename
-            ? h.filename + '  \u00b7  ' + (h.displayTime||'') + '  \u00b7  SHA256\u202f:\u202f' + (h.sha256Short||'')
-            : '',
-          font: {size:10, weight:'400'}, color:'#1a1a1a', padding:{bottom:10}
-        },
-        legend: { display:true, position:'bottom',
-                  labels:{font:{size:10}, color:'#1a1a1a', boxWidth:20, padding:10} }
-      },
-      scales: {
-        x: { type:'logarithmic', min:50, max:2000,
-             title:{display:true, text:'Frequenza (Hz)', font:{size:10}, color:'#1a1a1a'},
-             ticks:{ color:'#1a1a1a', font:{size:10},
-               callback: v => [50,100,200,432,440,1000,2000].includes(+v.toFixed(0)) ? v : '' },
-             grid:{ color:'rgba(0,0,0,0.07)' } },
-        y: { min:0, max:1,
-             title:{display:true, text:'Ampiezza norm.', font:{size:10}, color:'#1a1a1a'},
-             ticks:{ color:'#1a1a1a', font:{size:10} },
-             grid:{ color:'rgba(0,0,0,0.07)' } }
+        scales: {
+          x: { type:'logarithmic', min:50, max:2000,
+               title:{display:true, text:'Frequenza (Hz)', font:{size:10}, color:'#1a1a1a'},
+               ticks:{ color:'#1a1a1a', font:{size:10},
+                 callback: v => [50,100,200,432,440,1000,2000].includes(+v.toFixed(0)) ? v : '' },
+               grid:{ color:'rgba(0,0,0,0.07)' } },
+          y: { min:0, max:1,
+               title:{display:true, text:'Ampiezza norm.', font:{size:10}, color:'#1a1a1a'},
+               ticks:{ color:'#1a1a1a', font:{size:10} },
+               grid:{ color:'rgba(0,0,0,0.07)' } }
+        }
       }
     }
-  });
+  );
+
+  // ── Grafico zoom 420–460 Hz ───────────────────────────────────────────────
+  const zoomO = freqsO.map((f,i) => ({x:f, y:ampsO[i]})).filter(p => p.x >= 415 && p.x <= 465);
+  const zoomC = freqsC.map((f,i) => ({x:f, y:ampsC[i]})).filter(p => p.x >= 415 && p.x <= 465);
+
+  // Plugin etichette linee di riferimento — include frequenza originale misurata
+  const _refLabels = {
+    id: 'refLabels',
+    afterDraw(chart) {
+      const {ctx, scales: {x, y}} = chart;
+      const refs = [
+        { hz: h.preFreq, color:'#FF3B30', label: h.preFreq.toFixed(1)+' Hz', font:'bold 12px sans-serif', offsetY:18 },
+        { hz: 432,       color:'#34c759', label:'432 Hz',                     font:'bold 13px sans-serif', offsetY:32 },
+        { hz: 440,       color:'#FF9500', label:'440 Hz',                     font:'11px sans-serif',      offsetY:46 },
+      ];
+      refs.forEach(r => {
+        const xPx = x.getPixelForValue(r.hz);
+        if (xPx < x.left || xPx > x.right) return;
+        ctx.save();
+        ctx.font = r.font; ctx.fillStyle = r.color; ctx.textAlign = 'center';
+        ctx.fillText(r.label, xPx, y.top + r.offsetY);
+        ctx.restore();
+      });
+    }
+  };
+
+  fftChartZoom = new Chart(
+    document.getElementById('fft-chart-zoom').getContext('2d'),
+    {
+      type: 'scatter',
+      plugins: [_wbp, _refLabels],
+      data: { datasets: [
+        { label: 'Originale (' + h.preFreq.toFixed(1) + ' Hz)',
+          data: zoomO, showLine:true, borderColor:'#888', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:0, tension:0, order:5 },
+        { label: 'Convertito (432 Hz)',
+          data: zoomC, showLine:true, borderColor:'#34c759', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:0, tension:0, order:4 },
+        { label: h.preFreq.toFixed(1)+' Hz (originale)', data: vline(h.preFreq),
+          showLine:true, borderColor:'#FF3B30', backgroundColor:'transparent',
+          borderWidth:2, borderDash:[6,4], pointRadius:0, order:3 },
+        { label: '432 Hz ←', data: vline(432),
+          showLine:true, borderColor:'#34c759', backgroundColor:'transparent',
+          borderWidth:2, borderDash:[6,4], pointRadius:0, order:2 },
+        { label: '440 Hz', data: vline(440),
+          showLine:true, borderColor:'#FF9500', backgroundColor:'transparent',
+          borderWidth:1.5, borderDash:[5,5], pointRadius:0, order:2 },
+        { label: 'A4 post: ' + a4post.toFixed(1) + ' Hz', data: [{x:a4post, y:a4Amp}],
+          backgroundColor:'#34c759', borderColor:'#1e8c3a',
+          pointRadius:8, pointHoverRadius:10, order:1 }
+      ]},
+      options: {
+        color: '#1a1a1a',
+        responsive:true, maintainAspectRatio:false,
+        plugins: {
+          legend: _legendOpt,
+          title: {
+            display: true,
+            text: 'Dettaglio zona A4 \u2014 420\u2013460 Hz',
+            font:{size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:4}
+          },
+          subtitle: { display:false },
+        },
+        scales: {
+          x: { type:'linear', min:420, max:460,
+               title:{display:true, text:'Frequenza (Hz)', font:{size:10}, color:'#1a1a1a'},
+               ticks:{ color:'#1a1a1a', font:{size:10},
+                 callback: v => [420,425,430,432,435,440,445,450,455,460].includes(v) ? v : '' },
+               grid:{ color:'rgba(0,0,0,0.07)' } },
+          y: { min:0, max:1,
+               title:{display:true, text:'Ampiezza norm.', font:{size:10}, color:'#1a1a1a'},
+               ticks:{ color:'#1a1a1a', font:{size:10} },
+               grid:{ color:'rgba(0,0,0,0.07)' } }
+        }
+      }
+    }
+  );
 }
 function setBilling(mode,el){
   el.parentNode.querySelectorAll('.billing-opt').forEach(o=>o.classList.remove('active'));
@@ -756,13 +1048,76 @@ function setBilling(mode,el){
   document.getElementById('pro-period').textContent=annual?' /anno':' /mese';
   document.getElementById('pro-save').style.display=annual?'inline-block':'none';
   document.getElementById('pro-equiv').style.display=annual?'block':'none';
+  const featBc = document.getElementById('feat-blockchain');
+  if (featBc) featBc.style.display = annual ? 'list-item' : 'none';
+  _isPlanProAnnual = annual;
+  // Update cert button appearance
+  const certBtn = document.getElementById('cert-gen-btn');
+  if (certBtn) { certBtn.classList.toggle('locked', !annual); certBtn.firstChild.textContent = annual ? ' Certifica questo brano & Registra su Blockchain →' : '🔒 Certifica questo brano & Registra su Blockchain →'; }
 }
 function switchTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');}
 function selectFormat(f,el){fmt=f;document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');}
-function convSetPct(p){convPct=p;const st=document.getElementById('status-convert');st.textContent='Conversione in corso... '+Math.round(p)+'%';}
-function tubeStart(){clearInterval(convTimer);convPct=0;const st=document.getElementById('status-convert');st.className='status visible processing';convSetPct(0);document.getElementById('result-convert').classList.add('hidden');convTimer=setInterval(()=>{if(convPct<85){convPct+=Math.random()*2.5+0.8;if(convPct>85)convPct=85;convSetPct(convPct);}},180);}
-function tubeComplete(){clearInterval(convTimer);const sprint=setInterval(()=>{convPct+=2.5;if(convPct>=100){convSetPct(100);clearInterval(sprint);setTimeout(()=>{const st=document.getElementById('status-convert');st.className='status';st.textContent='';document.getElementById('result-convert').classList.remove('hidden');},600);}else{convSetPct(convPct);}},35);}
-function tubeError(msg){clearInterval(convTimer);const st=document.getElementById('status-convert');st.className='status visible';st.textContent=msg||'Errore.';}
+let _soxTimer = null;
+function _stopSoxAnim() { clearInterval(_soxTimer); _soxTimer = null; }
+function _startSoxAnim() {
+  if (_soxTimer) return;
+  const sub  = document.getElementById('sox-sub');
+  const labels = ['SoX — elaborazione audio.', 'SoX — elaborazione audio..', 'SoX — elaborazione audio...'];
+  let i = 0;
+  sub.style.display = 'block';
+  sub.textContent   = labels[0];
+  _soxTimer = setInterval(() => {
+    i = (i + 1) % labels.length;
+    sub.textContent = labels[i];
+  }, 500);
+}
+function convSetPct(p) {
+  convPct = p;
+  document.getElementById('status-convert').textContent = 'Conversione in corso... ' + Math.round(p) + '%';
+}
+function tubeStart() {
+  clearInterval(convTimer); _stopSoxAnim(); convPct = 0;
+  const st = document.getElementById('status-convert');
+  st.className  = 'status visible processing';
+  st.textContent = '';
+  const sub = document.getElementById('sox-sub');
+  sub.style.display = 'none'; sub.textContent = '';
+  document.getElementById('result-convert').classList.add('hidden');
+  convSetPct(0);
+  convTimer = setInterval(() => {
+    if (convPct < 85) {
+      convPct += Math.random() * 2.5 + 0.8;
+      if (convPct > 85) convPct = 85;
+      convSetPct(convPct);
+    } else {
+      convSetPct(85);
+      _startSoxAnim();
+    }
+  }, 180);
+}
+function tubeComplete() {
+  clearInterval(convTimer); _stopSoxAnim();
+  document.getElementById('sox-sub').style.display = 'none';
+  const sprint = setInterval(() => {
+    convPct += 2.5;
+    if (convPct >= 100) {
+      convSetPct(100); clearInterval(sprint);
+      setTimeout(() => {
+        const st = document.getElementById('status-convert');
+        st.className  = 'status';
+        st.textContent = '';
+        document.getElementById('result-convert').classList.remove('hidden');
+      }, 600);
+    } else { convSetPct(convPct); }
+  }, 35);
+}
+function tubeError(msg) {
+  clearInterval(convTimer); _stopSoxAnim();
+  document.getElementById('sox-sub').style.display = 'none';
+  const st = document.getElementById('status-convert');
+  st.className  = 'status visible';
+  st.textContent = msg || 'Errore.';
+}
 ['drop-area-verify','drop-area-convert'].forEach(id=>{
   const el=document.getElementById(id);
   el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
@@ -839,22 +1194,55 @@ function _centsVs432(hz) {
   return hz ? Math.round(1200 * Math.log2(hz / 432.0) * 100) / 100 : null;
 }
 
+async function _fetchWayback(url) {
+  if (!url) return null;
+  try {
+    const r = await fetch(
+      'https://archive.org/wayback/available?url=' + encodeURIComponent(url),
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    const c = d.archived_snapshots && d.archived_snapshots.closest;
+    if (!c || !c.available) return { available: false };
+    return {
+      available:  true,
+      snapshot_url: c.url,
+      timestamp:    c.timestamp,          // "20260329142305"
+      status:       c.status,
+    };
+  } catch (_) { return null; }
+}
+
 async function generateCertificate() {
   if (!_certResult || !_certFile) return;
-  const btn = document.getElementById('cert-gen-btn');
-  btn.disabled = true;
-  btn.textContent = 'Calcolo SHA-256 e registrazione…';
+  const btn       = document.getElementById('cert-gen-btn');
+  const sourceUrl = document.getElementById('source-url-input').value.trim();
+  btn.disabled    = true;
+  btn.textContent = 'Calcolo SHA-256…';
 
-  const buf      = await _certFile.arrayBuffer();
-  const fileHash = await _sha256hex(buf);
+  // Run SHA-256 and Wayback Machine fetch in parallel
+  const [fileHash, wayback] = await Promise.all([
+    _certFile.arrayBuffer().then(buf => _sha256hex(buf)),
+    sourceUrl ? _fetchWayback(sourceUrl) : Promise.resolve(null),
+  ]);
 
-  const d      = _certResult;
-  const pw     = d.per_window || [];
+  const d       = _certResult;
+  const pw      = d.per_window || [];
   const samples = _pickRandom(pw, Math.min(5, pw.length));
+
+  // Build source block only when URL is provided
+  const sourceBlock = sourceUrl ? {
+    url:               sourceUrl,
+    wayback_available: wayback ? wayback.available : null,
+    wayback_snapshot:  wayback && wayback.available ? wayback.snapshot_url  : null,
+    wayback_timestamp: wayback && wayback.available ? wayback.timestamp      : null,
+  } : null;
 
   const report = {
     rephase_version: '1.0.0',
     report_type:     'blind_test_certification',
+    ...(sourceBlock ? { source: sourceBlock } : {}),
     file: {
       name:       _certFile.name,
       size_bytes: _certFile.size,
@@ -868,19 +1256,19 @@ async function generateCertificate() {
       total_windows:        20,
     },
     blind_samples: samples.map((s, i) => ({
-      sample:     i + 1,
-      window_idx: s.idx,
-      time_sec:   s.time,
-      a4_hz:      s.a4,
+      sample:       i + 1,
+      window_idx:   s.idx,
+      time_sec:     s.time,
+      a4_hz:        s.a4,
       cents_vs_432: _centsVs432(s.a4),
     })),
     statistics: {
-      peak_freq_hz:  d.peak_freq,
-      mean_hz:       d.mean_hz ?? null,
-      std_dev_hz:    d.std_dev_hz ?? null,
-      cents_vs_432:  d.cents_vs_432,
-      is_432:        d.is_432,
-      verdict:       d.verdict,
+      peak_freq_hz: d.peak_freq,
+      mean_hz:      d.mean_hz      ?? null,
+      std_dev_hz:   d.std_dev_hz   ?? null,
+      cents_vs_432: d.cents_vs_432,
+      is_432:       d.is_432,
+      verdict:      d.verdict,
     },
   };
 
@@ -893,21 +1281,21 @@ async function generateCertificate() {
   btn.textContent = 'Registrazione su blockchain…';
   try {
     const resp = await fetch('/certify', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: jsonStr,
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    jsonStr,
     });
     const data = await resp.json();
-    _renderChainStatus(data);
+    _renderChainStatus(data, wayback, sourceUrl);
   } catch (e) {
-    _renderChainStatus({error: String(e)});
+    _renderChainStatus({ error: String(e) }, wayback, sourceUrl);
   }
 
   btn.textContent = 'Rigenera certificato';
-  btn.disabled = false;
+  btn.disabled    = false;
 }
 
-function _renderChainStatus(data) {
+function _renderChainStatus(data, wayback, sourceUrl) {
   const el = document.getElementById('cert-chain-status');
   if (data.error) {
     el.innerHTML = `<div class="cert-chain-row err">
@@ -924,6 +1312,38 @@ function _renderChainStatus(data) {
       <span>${hash}</span>
     </div>
   </div>`;
+
+  // Wayback Machine row
+  if (sourceUrl) {
+    if (!wayback) {
+      html += `<div class="cert-chain-row warn">
+        <span class="cert-chain-icon">🌐</span>
+        <div class="cert-chain-text"><strong>Wayback Machine</strong>
+          <span>Impossibile raggiungere archive.org</span></div>
+      </div>`;
+    } else if (!wayback.available) {
+      html += `<div class="cert-chain-row warn">
+        <span class="cert-chain-icon">🌐</span>
+        <div class="cert-chain-text"><strong>Wayback Machine</strong>
+          <span>Nessuno snapshot disponibile per questo URL</span></div>
+      </div>`;
+    } else {
+      // Format timestamp "20260329142305" → "2026-03-29 14:23:05"
+      const ts = wayback.timestamp || '';
+      const tsF = ts.length >= 14
+        ? ts.slice(0,4)+'-'+ts.slice(4,6)+'-'+ts.slice(6,8)+' '+ts.slice(8,10)+':'+ts.slice(10,12)+':'+ts.slice(12,14)+' UTC'
+        : ts;
+      html += `<div class="cert-chain-row">
+        <span class="cert-chain-icon">🌐</span>
+        <div class="cert-chain-text">
+          <strong>Wayback Machine snapshot — ${tsF}</strong>
+          <span><a href="${wayback.snapshot_url}" target="_blank" rel="noopener"
+            style="color:#1e8c3a;word-break:break-all;">${wayback.snapshot_url}</a></span>
+        </div>
+      </div>`;
+    }
+  }
+
   if (data.warning) {
     html += `<div class="cert-chain-row warn">
       <span class="cert-chain-icon">ℹ</span>
@@ -1158,6 +1578,8 @@ document.getElementById('file-verify').addEventListener('change', async function
   _certStartTime  = _zurichISO();
   _certEndTime    = null;
   _certReportJSON = null;
+  const _suEl = document.getElementById('source-url-input');
+  if (_suEl) _suEl.value = '';
 
   // Reset UI
   document.getElementById('result-verify').classList.add('hidden');
@@ -1173,6 +1595,9 @@ document.getElementById('file-verify').addEventListener('change', async function
   document.getElementById('btn-spectral').classList.add('hidden');
   document.getElementById('spectral-panel').classList.add('hidden');
   document.getElementById('btn-spectral').textContent = 'Analisi spettrale \u2193';
+  if (fftChartZoomVerify) { fftChartZoomVerify.destroy(); fftChartZoomVerify = null; }
+  document.getElementById('fft-zoom-verify-wrap').style.display = 'none';
+  document.getElementById('fft-dl-zoom-verify-wrap').style.display = 'none';
   document.getElementById('fft-live-badge').className = 'fft-live-badge';
   document.getElementById('fft-live-badge').textContent = '';
   document.getElementById('fft-live-progress').style.width = '0%';
@@ -1307,6 +1732,9 @@ document.getElementById('file-convert').addEventListener('change', async functio
   document.getElementById('spectral-panel-conv').classList.add('hidden');
   document.getElementById('btn-spectral-conv').textContent = 'Analisi spettrale \u2193';
   if (fftChartConv) { fftChartConv.destroy(); fftChartConv = null; }
+  if (fftChartZoom) { fftChartZoom.destroy(); fftChartZoom = null; }
+  document.getElementById('fft-zoom-wrap').style.display = 'none';
+  document.getElementById('fft-dl-zoom-conv-wrap').style.display = 'none';
   convertOrigFile = null; convertBlob = null; convertHeaders = null;
   tubeStart();
   // Start SHA-256 in parallel with the upload (Web Crypto is fast even on 250MB)
@@ -1370,6 +1798,65 @@ document.getElementById('file-convert').addEventListener('change', async functio
     tubeError('Errore — il backend \u00e8 in esecuzione?');
   }
 });
+
+function openCertDemo() {
+  document.getElementById('cert-demo-modal').classList.add('open');
+}
+function closeCertDemo() {
+  document.getElementById('cert-demo-modal').classList.remove('open');
+}
 </script>
+
+<!-- Cert demo modal -->
+<div class="cert-modal-overlay" id="cert-demo-modal" onclick="if(event.target===this)closeCertDemo()">
+  <div class="cert-modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div>
+        <strong style="font-size:15px;">Esempio certificato blockchain</strong>
+        <span class="cert-pro-badge" style="margin-left:8px;">Solo Pro Annuale</span>
+      </div>
+      <button onclick="closeCertDemo()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;line-height:1;">×</button>
+    </div>
+    <div style="font-size:11px;color:#888;margin-bottom:10px;">
+      Brano reale: <em>432 Hz Deep Healing Music</em> — 58M visualizzazioni su YouTube.<br>
+      Frequenza misurata: 438.7 Hz (non 432 Hz). Il certificato documenta legalmente la misurazione.
+    </div>
+    <pre style="background:#f5f5f5;border-radius:10px;padding:14px;font-size:10.5px;overflow:auto;flex:1;color:#1a1a1a;line-height:1.55;">{
+  "rephase_certificate": "1.0",
+  "status": "NOT_432HZ",
+  "file": {
+    "name": "432hz_deep_healing_music.mp3",
+    "sha256": "e3b4c2a1f9d87654321abcdef0123456789abcdef0123456789abcdef01234567",
+    "size_bytes": 14823640,
+    "duration_sec": 3600.0,
+    "source_url": "https://www.youtube.com/watch?v=XXXXXXXX",
+    "download_timestamp": "2026-03-29T10:14:03+01:00",
+    "wayback_snapshot": "https://web.archive.org/web/20260329091403/https://www.youtube.com/watch?v=XXXXXXXX"
+  },
+  "analysis": {
+    "dominant_frequency_hz": 438.7,
+    "target_hz": 432.0,
+    "deviation_cents": -21.8,
+    "samples": [
+      { "offset_sec": 360,  "freq_hz": 438.6, "confidence": 0.97 },
+      { "offset_sec": 720,  "freq_hz": 438.9, "confidence": 0.96 },
+      { "offset_sec": 1080, "freq_hz": 438.7, "confidence": 0.98 },
+      { "offset_sec": 1440, "freq_hz": 438.5, "confidence": 0.97 },
+      { "offset_sec": 1800, "freq_hz": 438.8, "confidence": 0.96 }
+    ]
+  },
+  "certification": {
+    "timestamp_utc": "2026-03-29T09:14:03Z",
+    "timezone": "Europe/Zurich",
+    "timestamp_local": "2026-03-29T10:14:03+01:00",
+    "certified_by": "Rephase v1.0 — rephase.app",
+    "blockchain_anchor": "PENDING — disponibile solo con piano Pro Annuale",
+    "legal_note": "Questo documento costituisce prova tecnica della frequenza fondamentale misurata."
+  }
+}</pre>
+    <button onclick="closeCertDemo()" style="margin-top:14px;width:100%;padding:11px;background:#1a1a1a;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">Chiudi</button>
+  </div>
+</div>
+
 </body>
 </html>
