@@ -127,41 +127,32 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
         fh.write(content)
 
     job_id = str(uuid.uuid4())
+    start_time = _time.time()
     with _conv_jobs_lock:
         _conv_jobs[job_id] = {
             "status":     "running",
-            "pct":        5,
-            "phase":      "decode",
             "already_432": None,
             "result":     None,
             "error":      None,
-            "created_at": _time.time(),
+            "created_at": start_time,
+            "start_time": start_time,
             "out_path":   tmp_out,
             "format":     format,
             "filename":   file.filename,
         }
 
     def _run():
-        def _progress(pct, phase=""):
-            with _conv_jobs_lock:
-                if job_id in _conv_jobs:
-                    new_pct = round(pct, 1)
-                    if new_pct > _conv_jobs[job_id]["pct"]:
-                        _conv_jobs[job_id]["pct"]   = new_pct
-                        _conv_jobs[job_id]["phase"]  = phase
-
         try:
-            # Pre-check: already 432?
             from core.converter import analyze_file as _af
             pre_check = _af(tmp_in)
             if pre_check.get("is_432"):
                 with _conv_jobs_lock:
                     _conv_jobs[job_id].update({
-                        "status": "done", "pct": 100, "already_432": True, "result": pre_check
+                        "status": "done", "already_432": True, "result": pre_check
                     })
                 return
 
-            result = convert_to_432(tmp_in, tmp_out, max_seconds=90, progress_cb=_progress)
+            result = convert_to_432(tmp_in, tmp_out, max_seconds=90)
             if not result["success"]:
                 with _conv_jobs_lock:
                     _conv_jobs[job_id]["status"] = "error"
@@ -171,7 +162,6 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
             with _conv_jobs_lock:
                 _conv_jobs[job_id].update({
                     "status":     "done",
-                    "pct":        100,
                     "already_432": result.get("already_432", False),
                     "result":     result,
                 })
@@ -187,7 +177,7 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
                 except Exception: pass
 
     threading.Thread(target=_run, daemon=True).start()
-    return JSONResponse({"job_id": job_id})
+    return JSONResponse({"job_id": job_id, "start_time": start_time})
 
 
 @app.get("/convert/status/{job_id}")
@@ -198,8 +188,7 @@ async def convert_status(job_id: str):
             raise HTTPException(404, "Job non trovato o scaduto")
         return JSONResponse({
             "status":     job["status"],
-            "pct":        job["pct"],
-            "phase":      job.get("phase", ""),
+            "start_time": job["start_time"],
             "already_432": job.get("already_432"),
             "result":     job.get("result"),
             "error":      job.get("error"),

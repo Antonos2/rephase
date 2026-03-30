@@ -1780,26 +1780,31 @@ document.getElementById('file-convert').addEventListener('change', function() {
 
   const _convHashPromise = file.arrayBuffer().then(buf => _sha256hex(buf));
   const _convTimestamp   = _zurichDisplayLine();
-  let _convJobId      = null;
-  let _convStartTime  = Date.now();
+  let _convJobId     = null;
+  let _convStartMs   = null;   // set when server confirms job started
   let _convLargeShown = false;
   let _convPollTimer  = null;
+  const _CONV_DURATION_MS = 120000; // 120 s estimated, pct = elapsed/1200 → max 95%
   const _stopConvPoll = () => { if (_convPollTimer) { clearInterval(_convPollTimer); _convPollTimer = null; } };
 
   const _pollConvStatus = async () => {
-    try {
-      const r = await fetch(API + '/convert/status/' + _convJobId);
-      if (!r.ok) { _stopConvPoll(); tubeError('Errore stato conversione: HTTP ' + r.status); return; }
-      const d = await r.json();
-
-      if (!_convLargeShown && (Date.now() - _convStartTime) > 30000) {
+    // Update progress bar based purely on elapsed time (always monotonically increasing)
+    if (_convStartMs !== null) {
+      const elapsed = Date.now() - _convStartMs;
+      const pct = Math.min(95, Math.floor(elapsed / (_CONV_DURATION_MS / 95)));
+      convSetPct(pct);
+      if (!_convLargeShown && elapsed > 30000) {
         _convLargeShown = true;
         const sub = document.getElementById('sox-sub');
         sub.style.display = 'block';
         sub.textContent = 'File grande \u2014 elaborazione in corso, attendere';
       }
+    }
 
-      convSetPct(Math.round(d.pct || 0));
+    try {
+      const r = await fetch(API + '/convert/status/' + _convJobId);
+      if (!r.ok) { _stopConvPoll(); tubeError('Errore stato conversione: HTTP ' + r.status); return; }
+      const d = await r.json();
 
       if (d.status === 'error') {
         _stopConvPoll();
@@ -1824,7 +1829,6 @@ document.getElementById('file-convert').addEventListener('change', function() {
           return;
         }
 
-        convSetPct(95);
         try {
           const dlRes = await fetch(API + '/convert/download/' + _convJobId);
           if (!dlRes.ok) { tubeError('Errore download: HTTP ' + dlRes.status); return; }
@@ -1875,7 +1879,7 @@ document.getElementById('file-convert').addEventListener('change', function() {
   fd.append('file', file);
   const xhr = new XMLHttpRequest();
   xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) convSetPct(Math.round((e.loaded / e.total) * 15));
+    if (e.lengthComputable) convSetPct(Math.round((e.loaded / e.total) * 5));
   };
   xhr.onload = () => {
     clearInterval(convTimer);
@@ -1885,8 +1889,8 @@ document.getElementById('file-convert').addEventListener('change', function() {
     }
     try {
       const { job_id } = JSON.parse(xhr.responseText);
-      _convJobId = job_id;
-      _convStartTime = Date.now();
+      _convJobId   = job_id;
+      _convStartMs = Date.now();
       _pollConvStatus();
       _convPollTimer = setInterval(_pollConvStatus, 2000);
     } catch(e) {
