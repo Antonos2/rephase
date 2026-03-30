@@ -9,3 +9,14 @@ __pycache__/
 venv/
 .DS_Store
 /tmp/
+# credentials
+REPHASE_credenziali_private.*
+# Remotion build artifacts
+remotion/node_modules/
+remotion/out/
+# generated output files
+*.mp3
+*.wav
+*.m4a
+*_certificate.json
+*_fft*.png
