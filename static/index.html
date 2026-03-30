@@ -393,6 +393,14 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       <div style="font-size:11px;color:#666;margin:6px 2px 0;">Formati supportati: MP3 &middot; M4A &middot; WAV &middot; FLAC &middot; AAC &middot; AIFF</div>
 
       <div class="status" id="status-convert"></div>
+      <!-- Upload progress (identico a Verifica) -->
+      <div class="upload-progress-wrap" id="upload-progress-wrap-conv" style="display:none;">
+        <div class="upload-progress-label" id="upload-pct-text-conv">Caricamento file... 0%</div>
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" id="upload-progress-fill-conv"></div>
+        </div>
+        <div class="upload-notice" id="upload-notice-conv"></div>
+      </div>
       <div id="sox-sub" style="display:none;text-align:center;font-size:12px;color:#1e8c3a;font-weight:600;padding:4px 0 8px;animation:rephase-pulse 1.2s ease-in-out infinite;"></div>
       <div id="result-already432" class="hidden" style="padding:20px 0;">
         <div class="verdict" id="cv-already-verdict" style="margin-bottom:0;">
@@ -1764,6 +1772,8 @@ document.getElementById('file-verify').addEventListener('change', async function
 document.getElementById('file-convert').addEventListener('change', function() {
   const file = this.files[0];
   if (!file) return;
+
+  // Reset UI
   document.getElementById('convert-label').textContent = file.name;
   document.getElementById('cv-detail').textContent = '';
   document.getElementById('result-convert').classList.add('hidden');
@@ -1775,36 +1785,55 @@ document.getElementById('file-convert').addEventListener('change', function() {
   if (fftChartZoom) { fftChartZoom.destroy(); fftChartZoom = null; }
   document.getElementById('fft-zoom-wrap').style.display = 'none';
   document.getElementById('fft-dl-zoom-conv-wrap').style.display = 'none';
+  document.getElementById('sox-sub').style.display = 'none';
+  document.getElementById('sox-sub').textContent = '';
   convertOrigFile = null; convertBlob = null; convertHeaders = null;
-  tubeStart();
+
+  // ── identico a Verifica ──────────────────────────────────────────────────
+  const st         = document.getElementById('status-convert');
+  const uploadWrap = document.getElementById('upload-progress-wrap-conv');
+  const uploadFill = document.getElementById('upload-progress-fill-conv');
+  const uploadLabel = document.getElementById('upload-pct-text-conv');
+
+  uploadFill.style.width = '0%';
+  uploadLabel.textContent = 'Caricamento file... 0%';
+  uploadWrap.style.display = 'block';
+  st.textContent = 'Caricamento in corso...';
+  st.className = 'status visible processing';
 
   const _convHashPromise = file.arrayBuffer().then(buf => _sha256hex(buf));
   const _convTimestamp   = _zurichDisplayLine();
-  let _convJobId    = null;
-  let _convPollTimer = null;
-  const _stopConvPoll = () => { if (_convPollTimer) { clearInterval(_convPollTimer); _convPollTimer = null; } };
 
-  const _pollConvStatus = async () => {
+  let _pollTimer = null;
+  const _stopPoll = () => { if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; } };
+
+  const _pollStatus = async (jobId) => {
     try {
-      const r = await fetch(API + '/convert/status/' + _convJobId);
-      if (!r.ok) { _stopConvPoll(); tubeError('Errore stato conversione: HTTP ' + r.status); return; }
+      const r = await fetch(API + '/convert/status/' + jobId);
+      if (!r.ok) {
+        _stopPoll();
+        st.textContent = 'Errore: job non trovato (HTTP ' + r.status + ')';
+        st.className = 'status visible';
+        return;
+      }
       const d = await r.json();
 
       if (d.status === 'error') {
-        _stopConvPoll();
-        tubeError('Errore: ' + (d.error || 'Errore sconosciuto'));
+        _stopPoll();
+        document.getElementById('sox-sub').style.display = 'none';
+        st.textContent = 'Errore: ' + (d.error || 'Errore sconosciuto');
+        st.className = 'status visible';
         return;
       }
 
       if (d.status === 'done') {
-        _stopConvPoll();
+        _stopPoll();
+        document.getElementById('sox-sub').style.display = 'none';
+        st.className = 'status';
 
         if (d.already_432) {
           const res = d.result;
-          clearInterval(convTimer); _stopSoxAnim();
-          const st = document.getElementById('status-convert');
-          st.className = 'status'; st.textContent = '';
-          document.getElementById('sox-sub').style.display = 'none';
+          st.textContent = '';
           const cSign = res.cents_vs_432 >= 0 ? '+' : '';
           document.getElementById('cv-already-text').textContent = 'Questo brano \u00e8 gi\u00e0 a 432 Hz \u2713';
           document.getElementById('cv-already-detail').textContent =
@@ -1814,8 +1843,12 @@ document.getElementById('file-convert').addEventListener('change', function() {
         }
 
         try {
-          const dlRes = await fetch(API + '/convert/download/' + _convJobId);
-          if (!dlRes.ok) { tubeError('Errore download: HTTP ' + dlRes.status); return; }
+          const dlRes = await fetch(API + '/convert/download/' + jobId);
+          if (!dlRes.ok) {
+            st.textContent = 'Errore download: HTTP ' + dlRes.status;
+            st.className = 'status visible';
+            return;
+          }
           const preFreq   = parseFloat(dlRes.headers.get('X-Pre-Freq')    || '0');
           const shiftCent = parseFloat(dlRes.headers.get('X-Shift-Cents') || '0');
           const postFreq  = parseFloat(dlRes.headers.get('X-Post-Freq')   || '0');
@@ -1848,35 +1881,52 @@ document.getElementById('file-convert').addEventListener('change', function() {
           document.getElementById('download-link').href = url;
           document.getElementById('download-link').download = stem + '_432.' + fmt;
           document.getElementById('btn-spectral-conv').classList.remove('hidden');
-          tubeComplete();
+          document.getElementById('result-convert').classList.remove('hidden');
         } catch(e) {
-          tubeError('Errore download file: ' + e.message);
+          st.textContent = 'Errore download file: ' + e.message;
+          st.className = 'status visible';
         }
       }
     } catch(e) {
-      _stopConvPoll();
-      tubeError('Errore connessione: ' + e.message);
+      _stopPoll();
+      st.textContent = 'Errore di connessione al server';
+      st.className = 'status visible';
     }
   };
 
+  // XHR upload — supports onprogress, identico a Verifica
   const fd = new FormData();
   fd.append('file', file);
   const xhr = new XMLHttpRequest();
-  xhr.onload = () => {
-    if (xhr.status !== 200) {
-      tubeError('Errore upload: HTTP ' + xhr.status + ' \u2014 ' + xhr.responseText.slice(0, 200));
-      return;
-    }
-    try {
-      const { job_id } = JSON.parse(xhr.responseText);
-      _convJobId = job_id;
-      _pollConvStatus();
-      _convPollTimer = setInterval(_pollConvStatus, 2000);
-    } catch(e) {
-      tubeError('Errore avvio conversione: risposta non valida.');
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      uploadFill.style.width = pct + '%';
+      uploadLabel.textContent = 'Caricamento file... ' + pct + '%';
     }
   };
-  xhr.onerror = () => tubeError('Errore di rete durante upload.');
+  xhr.onload = () => {
+    if (xhr.status !== 200) {
+      st.textContent = 'Errore nel caricamento (HTTP ' + xhr.status + ')';
+      st.className = 'status visible';
+      uploadWrap.style.display = 'none';
+      return;
+    }
+    const { job_id } = JSON.parse(xhr.responseText);
+    uploadLabel.textContent = 'Caricamento completato \u2014 avvio conversione...';
+    st.textContent = 'Conversione SoX in corso...';
+    uploadWrap.style.display = 'none';
+    const sox = document.getElementById('sox-sub');
+    sox.textContent = 'SoX in elaborazione...';
+    sox.style.display = 'block';
+    _pollStatus(job_id);
+    _pollTimer = setInterval(() => _pollStatus(job_id), 2000);
+  };
+  xhr.onerror = () => {
+    st.textContent = 'Errore di connessione \u2014 il backend \u00e8 in esecuzione?';
+    st.className = 'status visible';
+    uploadWrap.style.display = 'none';
+  };
   xhr.open('POST', API + '/convert/start?format=' + fmt);
   xhr.send(fd);
 });
