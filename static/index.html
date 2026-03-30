@@ -1069,7 +1069,7 @@ function _stopSoxAnim() { clearInterval(_soxTimer); _soxTimer = null; }
 function _startSoxAnim() {
   if (_soxTimer) return;
   const sub  = document.getElementById('sox-sub');
-  const labels = ['SoX — elaborazione audio.', 'SoX — elaborazione audio..', 'SoX — elaborazione audio...'];
+  const labels = ['SoX in elaborazione.', 'SoX in elaborazione..', 'SoX in elaborazione...'];
   let i = 0;
   sub.style.display = 'block';
   sub.textContent   = labels[0];
@@ -1780,27 +1780,11 @@ document.getElementById('file-convert').addEventListener('change', function() {
 
   const _convHashPromise = file.arrayBuffer().then(buf => _sha256hex(buf));
   const _convTimestamp   = _zurichDisplayLine();
-  let _convJobId     = null;
-  let _convStartMs   = null;   // set when server confirms job started
-  let _convLargeShown = false;
-  let _convPollTimer  = null;
-  const _CONV_DURATION_MS = 120000; // 120 s estimated, pct = elapsed/1200 → max 95%
+  let _convJobId    = null;
+  let _convPollTimer = null;
   const _stopConvPoll = () => { if (_convPollTimer) { clearInterval(_convPollTimer); _convPollTimer = null; } };
 
   const _pollConvStatus = async () => {
-    // Update progress bar based purely on elapsed time (always monotonically increasing)
-    if (_convStartMs !== null) {
-      const elapsed = Date.now() - _convStartMs;
-      const pct = Math.min(95, Math.floor(elapsed / (_CONV_DURATION_MS / 95)));
-      convSetPct(pct);
-      if (!_convLargeShown && elapsed > 30000) {
-        _convLargeShown = true;
-        const sub = document.getElementById('sox-sub');
-        sub.style.display = 'block';
-        sub.textContent = 'File grande \u2014 elaborazione in corso, attendere';
-      }
-    }
-
     try {
       const r = await fetch(API + '/convert/status/' + _convJobId);
       if (!r.ok) { _stopConvPoll(); tubeError('Errore stato conversione: HTTP ' + r.status); return; }
@@ -1817,7 +1801,7 @@ document.getElementById('file-convert').addEventListener('change', function() {
 
         if (d.already_432) {
           const res = d.result;
-          clearInterval(convTimer);
+          clearInterval(convTimer); _stopSoxAnim();
           const st = document.getElementById('status-convert');
           st.className = 'status'; st.textContent = '';
           document.getElementById('sox-sub').style.display = 'none';
@@ -1878,19 +1862,14 @@ document.getElementById('file-convert').addEventListener('change', function() {
   const fd = new FormData();
   fd.append('file', file);
   const xhr = new XMLHttpRequest();
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) convSetPct(Math.round((e.loaded / e.total) * 5));
-  };
   xhr.onload = () => {
-    clearInterval(convTimer);
     if (xhr.status !== 200) {
       tubeError('Errore upload: HTTP ' + xhr.status + ' \u2014 ' + xhr.responseText.slice(0, 200));
       return;
     }
     try {
       const { job_id } = JSON.parse(xhr.responseText);
-      _convJobId   = job_id;
-      _convStartMs = Date.now();
+      _convJobId = job_id;
       _pollConvStatus();
       _convPollTimer = setInterval(_pollConvStatus, 2000);
     } catch(e) {
