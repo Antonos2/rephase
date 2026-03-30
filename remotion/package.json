@@ -1,0 +1,25 @@
+{
+  "name": "rephase-video",
+  "version": "1.0.0",
+  "description": "Rephase FFT test video for TikTok/Reels",
+  "scripts": {
+    "start": "remotion studio",
+    "build": "npm run render:v && npm run render:h",
+    "render:v": "remotion render RephaseVideoVertical out/rephase_vertical_1080x1920.mp4 --codec=h264",
+    "render:h": "remotion render RephaseVideoHorizontal out/rephase_horizontal_1920x1080.mp4 --codec=h264"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.441",
+    "remotion": "4.0.441",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.4.5"
+  },
+  "remotion": {
+    "entryPoint": "./src/index.ts"
+  }
+}
