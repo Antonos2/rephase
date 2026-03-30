@@ -1633,7 +1633,7 @@ document.getElementById('file-verify').addEventListener('change', async function
   uploadLabel.textContent = 'Caricamento file... 0%';
   const isFull = _analysisMode === 'full';
   if (file.size > BIG_FILE && !isFull) {
-    uploadNotice.textContent = 'File grande \u2014 verranno analizzati solo i primi 90 secondi. Usa \u201cAnalisi completa\u201d per l\u2019intero brano.';
+    uploadNotice.textContent = 'File grande rilevato \u2014 analisi su 20 campioni distribuiti sull\u2019intera durata del brano.';
   } else if (isFull) {
     uploadNotice.textContent = 'Modalit\u00e0 analisi completa \u2014 le 20 finestre coprono l\u2019intero brano.';
   } else {
@@ -1675,7 +1675,9 @@ document.getElementById('file-verify').addEventListener('change', async function
         wrap.style.display = 'block';
         _initLiveChart();
         _initTimelineChart(newWindows[0].duration_sec || 1);
-        st.textContent = 'Analisi in corso...';
+        st.textContent = data.sampled
+          ? 'Analisi su 20 campioni distribuiti sull\u2019intera durata...'
+          : 'Analisi in corso...';
       }
       for (const w of newWindows) {
         _updateLiveChart(w);

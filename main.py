@@ -151,11 +151,20 @@ async def analyze_start(file: UploadFile = File(...), full_analysis: str = Form(
 
     def _run():
         import tempfile, os as _os
-        from core.converter import _load_as_wav, _read_wav_samples, _measure_a4_streaming
+        from core.converter import (
+            _load_as_wav, _load_as_wav_sampled, _is_large_file,
+            _read_wav_samples, _measure_a4_streaming,
+        )
         tmp_wav = tempfile.mktemp(suffix=".wav")
         try:
-            _load_as_wav(tmp, tmp_wav, channels=1,
-                         max_seconds=None if is_full else 90)
+            if is_full:
+                _load_as_wav(tmp, tmp_wav, channels=1, max_seconds=None)
+            elif _is_large_file(tmp):
+                _load_as_wav_sampled(tmp, tmp_wav, channels=1)
+                with _jobs_lock:
+                    _jobs[job_id]["sampled"] = True
+            else:
+                _load_as_wav(tmp, tmp_wav, channels=1, max_seconds=90)
             samples, sr = _read_wav_samples(tmp_wav)
             for msg in _measure_a4_streaming(samples, sr):
                 with _jobs_lock:
@@ -194,6 +203,7 @@ async def analyze_status(job_id: str):
             "windows": job["windows"],
             "result":  job["result"],
             "error":   job["error"],
+            "sampled": job.get("sampled", False),
         })
 
 

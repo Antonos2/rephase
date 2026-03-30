@@ -191,6 +191,68 @@ def _measure_a4_streaming(samples, sr):
     yield {"type": "done", "result": result}
 
 
+LARGE_FILE_BYTES = 50 * 1024 * 1024   # 50 MB
+LARGE_FILE_SECS  = 600                  # 10 minutes
+N_SAMPLES        = 20
+SAMPLE_DUR       = 5                    # seconds per sample
+
+def _get_duration(input_path):
+    """Return audio duration in seconds via ffprobe, or None on error."""
+    import json as _json
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", input_path],
+            capture_output=True, check=True, timeout=30
+        )
+        return float(_json.loads(r.stdout)["format"]["duration"])
+    except Exception:
+        return None
+
+def _is_large_file(input_path):
+    """True if file size >50 MB or audio duration >10 minutes."""
+    if os.path.getsize(input_path) > LARGE_FILE_BYTES:
+        return True
+    dur = _get_duration(input_path)
+    return dur is not None and dur > LARGE_FILE_SECS
+
+def _load_as_wav_sampled(input_path, tmp_wav, channels=1,
+                          n_samples=N_SAMPLES, sample_dur=SAMPLE_DUR):
+    """Extract n_samples × sample_dur seconds distributed across the full file
+    (stratified random sampling), concatenate raw PCM and write as a single WAV.
+    Falls back to full load if duration cannot be probed or file is very short."""
+    import random as _random
+    duration = _get_duration(input_path)
+    if duration is None or duration <= sample_dur * 2:
+        _load_as_wav(input_path, tmp_wav, channels=channels)
+        return
+
+    max_start = duration - sample_dur
+    # Stratified sampling: divide [0, max_start] into n_samples equal intervals
+    interval = max_start / n_samples
+    offsets = sorted([
+        _random.uniform(i * interval, min((i + 1) * interval, max_start))
+        for i in range(n_samples)
+    ])
+
+    all_pcm = bytearray()
+    for offset in offsets:
+        r = subprocess.run([
+            "ffmpeg", "-y",
+            "-ss", f"{offset:.3f}", "-t", str(sample_dur),
+            "-i", input_path,
+            "-ac", str(channels), "-ar", str(SR_ANALYSIS),
+            "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1",
+            "-loglevel", "error"
+        ], capture_output=True, check=True, timeout=60)
+        all_pcm.extend(r.stdout)
+
+    with wave.open(tmp_wav, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(2)   # 16-bit
+        wf.setframerate(SR_ANALYSIS)
+        wf.writeframes(bytes(all_pcm))
+
 def _load_as_wav(input_path, tmp_wav, channels=1, max_seconds=None):
     cmd = ["ffmpeg", "-y", "-i", input_path]
     if max_seconds is not None:
