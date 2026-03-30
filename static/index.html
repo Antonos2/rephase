@@ -597,7 +597,7 @@ function toggleSpectral() {
   panel.classList.toggle('hidden', !open);
   btn.textContent = open ? 'Analisi spettrale \u2191' : 'Analisi spettrale \u2193';
 }
-function renderSpectral(d, filename) {
+function renderSpectral(d, filename, sha256Short, displayTime) {
   // Table — all values from API, no hardcoding
   const sign = v => (v >= 0 ? '+' : '') + v;
   const set  = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.textContent = v; };
@@ -739,7 +739,13 @@ function renderSpectral(d, filename) {
           title: { display:true,
             text: 'Dettaglio zona A4 \u2014 420\u2013460 Hz',
             font:{size:12,weight:'600'}, color:'#1a1a1a', padding:{bottom:4} },
-          subtitle: { display:false },
+          subtitle: {
+            display: !!(filename),
+            text: filename
+              ? filename + (displayTime ? '  \u00b7  ' + displayTime : '') + (sha256Short ? '  \u00b7  SHA256\u202f:\u202f' + sha256Short : '')
+              : '',
+            font:{size:10, weight:'400'}, color:'#1a1a1a', padding:{bottom:10}
+          },
         },
         scales: {
           x: { type:'linear', min:420, max:460,
@@ -1023,7 +1029,13 @@ function renderSpectralConvert(origData, convData, h) {
             text: 'Dettaglio zona A4 \u2014 420\u2013460 Hz',
             font:{size:12, weight:'600'}, color:'#1a1a1a', padding:{bottom:4}
           },
-          subtitle: { display:false },
+          subtitle: {
+            display: !!(h.filename),
+            text: h.filename
+              ? h.filename + '  \u00b7  ' + (h.displayTime||'') + '  \u00b7  SHA256\u202f:\u202f' + (h.sha256Short||'')
+              : '',
+            font:{size:10, weight:'400'}, color:'#1a1a1a', padding:{bottom:10}
+          },
         },
         scales: {
           x: { type:'linear', min:420, max:460,
@@ -1635,9 +1647,11 @@ document.getElementById('file-verify').addEventListener('change', async function
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(proto + '//' + location.host + '/ws/analyze');
+  let _verifyHash = ''; const _verifyTime = _zurichDisplayLine();
 
   ws.onopen = async () => {
     const buf = await file.arrayBuffer();
+    _sha256hex(buf).then(h => { _verifyHash = h.slice(0, 8) + '\u2026'; });
     const CHUNK = 512 * 1024; // 512 KB per chunk
     ws.send(JSON.stringify({ filename: file.name, total_size: buf.byteLength, full_analysis: isFull }));
 
@@ -1704,7 +1718,7 @@ document.getElementById('file-verify').addEventListener('change', async function
       document.getElementById('rv-detail').textContent = detail;
       document.getElementById('result-verify').classList.remove('hidden');
       document.getElementById('cert-section').classList.remove('hidden');
-      renderSpectral(d, file.name);
+      renderSpectral(d, file.name, _verifyHash, _verifyTime);
     } else if (msg.type === 'error') {
       st.textContent = 'Errore: ' + msg.error;
       st.className = 'status visible';
