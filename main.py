@@ -145,12 +145,13 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
         def _progress(pct, phase=""):
             with _conv_jobs_lock:
                 if job_id in _conv_jobs:
-                    _conv_jobs[job_id]["pct"]   = round(pct, 1)
-                    _conv_jobs[job_id]["phase"]  = phase
+                    new_pct = round(pct, 1)
+                    if new_pct > _conv_jobs[job_id]["pct"]:
+                        _conv_jobs[job_id]["pct"]   = new_pct
+                        _conv_jobs[job_id]["phase"]  = phase
 
         try:
             # Pre-check: already 432?
-            _progress(5, "decode")
             from core.converter import analyze_file as _af
             pre_check = _af(tmp_in)
             if pre_check.get("is_432"):
@@ -160,7 +161,6 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
                     })
                 return
 
-            _progress(15, "pre_analysis")
             result = convert_to_432(tmp_in, tmp_out, max_seconds=90, progress_cb=_progress)
             if not result["success"]:
                 with _conv_jobs_lock:

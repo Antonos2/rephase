@@ -295,13 +295,12 @@ def convert_to_432(input_path, output_path, max_seconds=None, progress_cb=None):
         print(f"[convert] start  sox={sox_path}  ffmpeg={_sh.which('ffmpeg')}  in={input_path}", flush=True)
         if not sox_path:
             return {"success": False, "error": "SoX non trovato sul server — assicurarsi che sox sia installato (build.sh)"}
-        _cb(5, "decode")
         _load_as_wav(input_path, tmp_in, channels=2, max_seconds=max_seconds)
         tmp_in_size = os.path.getsize(tmp_in) if os.path.exists(tmp_in) else -1
         print(f"[convert] decode_done  tmp_in_size={tmp_in_size}", flush=True)
         if tmp_in_size <= 0:
             return {"success": False, "error": "Decodifica WAV fallita: file vuoto"}
-        _cb(12, "pre_analysis")
+        _cb(15, "decode")
         samples, sr = _read_wav_samples(tmp_in)
         pre = _measure_a4(samples, sr)
         print(f"[convert] pre_analysis  success={pre.get('success')}  peak={pre.get('peak_freq')}  is_432={pre.get('is_432')}", flush=True)
@@ -311,16 +310,16 @@ def convert_to_432(input_path, output_path, max_seconds=None, progress_cb=None):
         if pre["is_432"]:
             return {"success": True, "already_432": True, "pre_freq": a4_original, "pre_cents": pre["cents_vs_432"], "post_freq": a4_original, "post_cents": pre["cents_vs_432"], "shift_applied": 0.0, "certified": True, "message": "Il brano è già certificato a 432 Hz."}
         shift_cents = 1200.0 * math.log2(TARGET_HZ / a4_original)
-        _cb(20, "sox")
+        _cb(25, "sox")
 
-        # Progress timer for SoX (20 → 65 % over ~90 s)
+        # Progress timer for SoX (25 → 70 % over ~90 s, strictly monotonic via _progress guard)
         _sox_done = _th.Event()
         def _sox_timer():
             start = _t.time()
             while not _sox_done.is_set():
                 elapsed = _t.time() - start
                 frac = min(0.95, elapsed / 90.0)
-                _cb(20 + frac * 45, "sox")
+                _cb(25 + frac * 45, "sox")
                 _t.sleep(1.0)
         _th.Thread(target=_sox_timer, daemon=True).start()
 
@@ -338,7 +337,6 @@ def convert_to_432(input_path, output_path, max_seconds=None, progress_cb=None):
         print(f"[convert] sox_done  tmp_432_size={tmp_432_size}", flush=True)
         if tmp_432_size <= 0:
             return {"success": False, "error": "SoX ha prodotto un file vuoto"}
-        _cb(65, "encode")
 
         ext = os.path.splitext(output_path)[1].lower()
         print(f"[convert] ffmpeg_encode  ext={ext}  out={output_path}", flush=True)
@@ -354,7 +352,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, progress_cb=None):
         print(f"[convert] ffmpeg_done  out_size={out_size}", flush=True)
         if out_size <= 0:
             return {"success": False, "error": "ffmpeg ha prodotto un file vuoto"}
-        _cb(75, "post_analysis")
+        _cb(80, "post_analysis")
 
         tmp_post = tempfile.mktemp(suffix=".wav")
         try:
@@ -374,7 +372,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, progress_cb=None):
 
         # Corrective second pass: re-apply from original WAV with compensated shift.
         if not certified and abs(post_cents) < 30.0:
-            _cb(90, "second_pass")
+            _cb(92, "second_pass")
             tmp_corr_out = tempfile.mktemp(suffix=".wav")
             try:
                 eff = (shift_cents + post_cents) / shift_cents
@@ -413,7 +411,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, progress_cb=None):
                 print(f"[convert] >>> second pass Exception: {corr_pass_error}", flush=True)
             finally:
                 if os.path.exists(tmp_corr_out): os.remove(tmp_corr_out)
-            _cb(98, "second_pass_done")
+            _cb(96, "second_pass_done")
 
         message = (f"Certificato a 432 Hz \u2713 (pass {correction_passes}, \u0394 {post_cents:+.2f} cent)"
                    if certified else

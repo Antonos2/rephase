@@ -1784,7 +1784,6 @@ document.getElementById('file-convert').addEventListener('change', function() {
   let _convStartTime  = Date.now();
   let _convLargeShown = false;
   let _convPollTimer  = null;
-  let _displayedPct   = 0;
   const _stopConvPoll = () => { if (_convPollTimer) { clearInterval(_convPollTimer); _convPollTimer = null; } };
 
   const _pollConvStatus = async () => {
@@ -1800,8 +1799,7 @@ document.getElementById('file-convert').addEventListener('change', function() {
         sub.textContent = 'File grande \u2014 elaborazione in corso, attendere';
       }
 
-      const _newPct = Math.round(d.pct || 0);
-      if (_newPct > _displayedPct) { _displayedPct = _newPct; convSetPct(_displayedPct); }
+      convSetPct(Math.round(d.pct || 0));
 
       if (d.status === 'error') {
         _stopConvPoll();
@@ -1826,7 +1824,7 @@ document.getElementById('file-convert').addEventListener('change', function() {
           return;
         }
 
-        if (95 > _displayedPct) { _displayedPct = 95; convSetPct(95); }
+        convSetPct(95);
         try {
           const dlRes = await fetch(API + '/convert/download/' + _convJobId);
           if (!dlRes.ok) { tubeError('Errore download: HTTP ' + dlRes.status); return; }
@@ -1877,10 +1875,7 @@ document.getElementById('file-convert').addEventListener('change', function() {
   fd.append('file', file);
   const xhr = new XMLHttpRequest();
   xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      const p = Math.round((e.loaded / e.total) * 15);
-      if (p > _displayedPct) { _displayedPct = p; convSetPct(_displayedPct); }
-    }
+    if (e.lengthComputable) convSetPct(Math.round((e.loaded / e.total) * 15));
   };
   xhr.onload = () => {
     clearInterval(convTimer);
