@@ -1645,94 +1645,123 @@ document.getElementById('file-verify').addEventListener('change', async function
   st.textContent = 'Caricamento in corso...';
   st.className = 'status visible processing';
 
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(proto + '//' + location.host + '/ws/analyze');
-  let _verifyHash = ''; const _verifyTime = _zurichDisplayLine();
+  const _verifyTime = _zurichDisplayLine();
+  let _verifyHash = '';
+  file.arrayBuffer().then(buf => _sha256hex(buf)).then(h => { _verifyHash = h.slice(0, 8) + '\u2026'; });
 
-  ws.onopen = async () => {
-    const buf = await file.arrayBuffer();
-    _sha256hex(buf).then(h => { _verifyHash = h.slice(0, 8) + '\u2026'; });
-    const CHUNK = 512 * 1024; // 512 KB per chunk
-    ws.send(JSON.stringify({ filename: file.name, total_size: buf.byteLength, full_analysis: isFull }));
+  let _pollTimer = null;
+  let _lastWindowIdx = 0;
 
-    let offset = 0;
-    while (offset < buf.byteLength) {
-      // Throttle: don't flood the socket buffer
-      while (ws.bufferedAmount > CHUNK * 6) {
-        await new Promise(r => setTimeout(r, 30));
+  const _stopPoll = () => { if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; } };
+
+  const _pollStatus = async (jobId) => {
+    try {
+      const r = await fetch(API + '/analyze/status/' + jobId);
+      if (!r.ok) {
+        _stopPoll();
+        st.textContent = 'Errore: job non trovato (HTTP ' + r.status + ')';
+        st.className = 'status visible';
+        uploadWrap.style.display = 'none'; wrap.style.display = 'none';
+        return;
       }
-      const end = Math.min(offset + CHUNK, buf.byteLength);
-      ws.send(buf.slice(offset, end));
-      offset = end;
-      const pct = Math.round(offset / buf.byteLength * 100);
-      uploadFill.style.width = pct + '%';
-      uploadLabel.textContent = 'Caricamento file... ' + pct + '%';
-    }
-    // Upload complete — wait for analysis to start
-    uploadLabel.textContent = 'Caricamento completato \u2014 avvio analisi...';
-    st.textContent = 'Avvio analisi FFT...';
-  };
+      const data = await r.json();
 
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'window') {
-      // First window: init charts and switch panels
-      if (uploadWrap.style.display !== 'none') {
+      // Process only new windows since last poll
+      const newWindows = data.windows.slice(_lastWindowIdx);
+      _lastWindowIdx = data.windows.length;
+
+      if (newWindows.length > 0 && uploadWrap.style.display !== 'none') {
         uploadWrap.style.display = 'none';
         wrap.style.display = 'block';
         _initLiveChart();
-        _initTimelineChart(msg.duration_sec || 1);
+        _initTimelineChart(newWindows[0].duration_sec || 1);
         st.textContent = 'Analisi in corso...';
       }
-      _updateLiveChart(msg);
-      _updateTimeline(msg);
-    } else if (msg.type === 'done') {
-      const d = msg.result;
-      _certResult   = d;
-      _certEndTime  = _zurichISO();
-      _finalizeLiveChart(d);
-      _finalizeTimeline(d);
-      st.className = 'status';
-      const ok = d.is_432;
-      const cSign = d.cents_vs_432 >= 0 ? '+' : '';
-      document.getElementById('rv-freq').textContent = d.peak_freq.toFixed(1) + ' Hz';
-      document.getElementById('rv-sub').textContent = d.verdict;
-      document.getElementById('rv-cents').textContent = cSign + d.cents_vs_432.toFixed(1);
-      document.getElementById('rv-verdict').className = 'verdict' + (ok ? '' : ' fail');
-      document.getElementById('rv-dot').className = 'verdict-dot' + (ok ? '' : ' gray');
-      document.getElementById('rv-text').textContent = ok ? 'Certificato a 432 Hz \u2713' : 'Questo brano NON \u00e8 a 432 Hz';
-      // Build detail line with per-window stats
-      const dur = d.duration_analyzed;
-      const std = d.std_dev_hz;
-      let detail = 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent';
-      if (!ok) detail += ' da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
-      else     detail += '  \u00b7  Analisi su ' + d.n_votes + ' finestre';
-      if (dur) {
-        const m = Math.floor(dur/60), s = Math.round(dur%60);
-        detail += '  \u00b7  Durata analizzata: ' + (m>0?m+'m ':'')+s+'s';
+      for (const w of newWindows) {
+        _updateLiveChart(w);
+        _updateTimeline(w);
       }
-      if (std !== null && std !== undefined) {
-        const stability = std < 0.5 ? 'frequenza stabile' : std < 2 ? 'lieve variazione' : 'frequenza instabile';
-        detail += '  \u00b7  \u03c3 = ' + std.toFixed(3) + ' Hz (' + stability + ')';
+
+      if (data.status === 'done') {
+        _stopPoll();
+        const d = data.result;
+        _certResult  = d;
+        _certEndTime = _zurichISO();
+        _finalizeLiveChart(d);
+        _finalizeTimeline(d);
+        st.className = 'status';
+        const ok = d.is_432;
+        const cSign = d.cents_vs_432 >= 0 ? '+' : '';
+        document.getElementById('rv-freq').textContent = d.peak_freq.toFixed(1) + ' Hz';
+        document.getElementById('rv-sub').textContent = d.verdict;
+        document.getElementById('rv-cents').textContent = cSign + d.cents_vs_432.toFixed(1);
+        document.getElementById('rv-verdict').className = 'verdict' + (ok ? '' : ' fail');
+        document.getElementById('rv-dot').className = 'verdict-dot' + (ok ? '' : ' gray');
+        document.getElementById('rv-text').textContent = ok ? 'Certificato a 432 Hz \u2713' : 'Questo brano NON \u00e8 a 432 Hz';
+        const dur = d.duration_analyzed;
+        const std = d.std_dev_hz;
+        let detail = 'Frequenza rilevata: ' + d.peak_freq.toFixed(1) + ' Hz  \u00b7  Scostamento: ' + cSign + d.cents_vs_432.toFixed(1) + ' cent';
+        if (!ok) detail += ' da 432 Hz  \u00b7  Pi\u00f9 vicino a ' + d.verdict;
+        else     detail += '  \u00b7  Analisi su ' + d.n_votes + ' finestre';
+        if (dur) {
+          const m = Math.floor(dur/60), s = Math.round(dur%60);
+          detail += '  \u00b7  Durata analizzata: ' + (m>0?m+'m ':'')+s+'s';
+        }
+        if (std !== null && std !== undefined) {
+          const stability = std < 0.5 ? 'frequenza stabile' : std < 2 ? 'lieve variazione' : 'frequenza instabile';
+          detail += '  \u00b7  \u03c3 = ' + std.toFixed(3) + ' Hz (' + stability + ')';
+        }
+        document.getElementById('rv-detail').textContent = detail;
+        document.getElementById('result-verify').classList.remove('hidden');
+        document.getElementById('cert-section').classList.remove('hidden');
+        renderSpectral(d, file.name, _verifyHash, _verifyTime);
+      } else if (data.status === 'error') {
+        _stopPoll();
+        st.textContent = 'Errore: ' + (data.error || 'Errore sconosciuto');
+        st.className = 'status visible';
+        uploadWrap.style.display = 'none'; wrap.style.display = 'none';
       }
-      document.getElementById('rv-detail').textContent = detail;
-      document.getElementById('result-verify').classList.remove('hidden');
-      document.getElementById('cert-section').classList.remove('hidden');
-      renderSpectral(d, file.name, _verifyHash, _verifyTime);
-    } else if (msg.type === 'error') {
-      st.textContent = 'Errore: ' + msg.error;
+    } catch(e) {
+      _stopPoll();
+      st.textContent = 'Errore di connessione al server';
       st.className = 'status visible';
-      uploadWrap.style.display = 'none';
-      wrap.style.display = 'none';
+      uploadWrap.style.display = 'none'; wrap.style.display = 'none';
     }
   };
 
-  ws.onerror = () => {
-    st.textContent = 'Errore WebSocket \u2014 il backend \u00e8 in esecuzione?';
-    st.className = 'status visible';
-    uploadWrap.style.display = 'none';
-    wrap.style.display = 'none';
+  // XHR upload — supports onprogress, unlike fetch
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('full_analysis', isFull ? '1' : '0');
+  const xhr = new XMLHttpRequest();
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      uploadFill.style.width = pct + '%';
+      uploadLabel.textContent = 'Caricamento file... ' + pct + '%';
+    }
   };
+  xhr.onload = () => {
+    if (xhr.status !== 200) {
+      st.textContent = 'Errore nel caricamento (HTTP ' + xhr.status + ')';
+      st.className = 'status visible';
+      uploadWrap.style.display = 'none';
+      return;
+    }
+    const { job_id } = JSON.parse(xhr.responseText);
+    uploadLabel.textContent = 'Caricamento completato \u2014 avvio analisi...';
+    st.textContent = 'Avvio analisi FFT...';
+    // Poll immediately, then every 2 s
+    _pollStatus(job_id);
+    _pollTimer = setInterval(() => _pollStatus(job_id), 2000);
+  };
+  xhr.onerror = () => {
+    st.textContent = 'Errore di connessione \u2014 il backend \u00e8 in esecuzione?';
+    st.className = 'status visible';
+    uploadWrap.style.display = 'none'; wrap.style.display = 'none';
+  };
+  xhr.open('POST', API + '/analyze/start');
+  xhr.send(fd);
 });
 
 document.getElementById('file-convert').addEventListener('change', async function() {

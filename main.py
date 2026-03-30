@@ -1,11 +1,28 @@
 #!/usr/bin/env python3
-import os, uuid
+import os, uuid, threading
+import time as _time
 import aiofiles
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
+
+# ── In-memory job store (polling-based analysis) ──────────────────────────────
+_jobs: dict = {}
+_jobs_lock = threading.Lock()
+
+def _cleanup_jobs():
+    """Background thread: remove jobs older than 10 minutes."""
+    while True:
+        _time.sleep(300)
+        cutoff = _time.time() - 600
+        with _jobs_lock:
+            expired = [k for k, v in _jobs.items() if v.get("created_at", 0) < cutoff]
+            for k in expired:
+                del _jobs[k]
+
+threading.Thread(target=_cleanup_jobs, daemon=True).start()
 
 app = FastAPI(title="Rephase API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -104,47 +121,33 @@ def _check_admin(authorization: str = Header(default=None)):
     if not secrets.compare_digest(authorization[7:].encode(), _ADMIN_PASSWORD.encode()):
         raise HTTPException(401, "Wrong password")
 
-@app.websocket("/ws/analyze")
-async def ws_analyze(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        meta_text = await asyncio.wait_for(websocket.receive_text(), timeout=10)
-        meta = _json.loads(meta_text)
-        filename     = meta.get("filename", "upload.mp3")
-        full_analysis = bool(meta.get("full_analysis", False))
-        ext = Path(filename).suffix.lower()
-        if ext not in ALLOWED:
-            await websocket.send_json({"type": "error", "error": f"Formato non supportato: {ext}"})
-            return
-        total_size = meta.get("total_size", 0)
-        if total_size > MAX_SIZE:
-            await websocket.send_json({"type": "error", "error": "File troppo grande"})
-            return
-        if total_size > 0:
-            # Chunked upload: receive until total_size bytes collected
-            chunks = []
-            received = 0
-            while received < total_size:
-                chunk = await asyncio.wait_for(websocket.receive_bytes(), timeout=120)
-                chunks.append(chunk)
-                received += len(chunk)
-            file_bytes = b"".join(chunks)
-        else:
-            # Fallback: single binary message
-            file_bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=300)
-            if len(file_bytes) > MAX_SIZE:
-                await websocket.send_json({"type": "error", "error": "File troppo grande"})
-                return
-    except (asyncio.TimeoutError, WebSocketDisconnect):
-        return
+# ── Polling-based FFT analysis (replaces WebSocket) ───────────────────────────
 
-    uid  = str(uuid.uuid4())
-    tmp  = str(TEMP_DIR / f"{uid}{ext}")
-    with open(tmp, "wb") as f:
-        f.write(file_bytes)
+@app.post("/analyze/start")
+async def analyze_start(file: UploadFile = File(...), full_analysis: str = Form(default="0")):
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED:
+        raise HTTPException(400, f"Formato non supportato: {ext}")
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(413, "File troppo grande")
 
-    loop  = asyncio.get_running_loop()
-    queue: asyncio.Queue = asyncio.Queue()
+    uid = str(uuid.uuid4())
+    tmp = str(TEMP_DIR / f"{uid}{ext}")
+    with open(tmp, "wb") as fh:
+        fh.write(content)
+
+    job_id   = str(uuid.uuid4())
+    is_full  = full_analysis in ("1", "true", "True")
+
+    with _jobs_lock:
+        _jobs[job_id] = {
+            "status":     "running",
+            "windows":    [],
+            "result":     None,
+            "error":      None,
+            "created_at": _time.time(),
+        }
 
     def _run():
         import tempfile, os as _os
@@ -152,31 +155,46 @@ async def ws_analyze(websocket: WebSocket):
         tmp_wav = tempfile.mktemp(suffix=".wav")
         try:
             _load_as_wav(tmp, tmp_wav, channels=1,
-                         max_seconds=None if full_analysis else 90)
+                         max_seconds=None if is_full else 90)
             samples, sr = _read_wav_samples(tmp_wav)
             for msg in _measure_a4_streaming(samples, sr):
-                asyncio.run_coroutine_threadsafe(queue.put(msg), loop).result()
+                with _jobs_lock:
+                    if msg.get("type") == "window":
+                        _jobs[job_id]["windows"].append(msg)
+                    elif msg.get("type") == "done":
+                        _jobs[job_id]["result"] = msg["result"]
+                        _jobs[job_id]["status"] = "done"
+                    elif msg.get("type") == "error":
+                        _jobs[job_id]["status"] = "error"
+                        _jobs[job_id]["error"]  = msg.get("error", "Errore sconosciuto")
         except Exception as e:
-            asyncio.run_coroutine_threadsafe(
-                queue.put({"type": "error", "error": str(e)}), loop
-            ).result()
+            with _jobs_lock:
+                _jobs[job_id]["status"] = "error"
+                _jobs[job_id]["error"]  = str(e)
         finally:
             for p in [tmp_wav, tmp]:
                 if _os.path.exists(p): _os.remove(p)
-            asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
+            with _jobs_lock:
+                if _jobs[job_id]["status"] == "running":
+                    _jobs[job_id]["status"] = "error"
+                    _jobs[job_id]["error"]  = "Analisi interrotta"
 
-    loop.run_in_executor(None, _run)
+    threading.Thread(target=_run, daemon=True).start()
+    return JSONResponse({"job_id": job_id})
 
-    try:
-        while True:
-            msg = await queue.get()
-            if msg is None:
-                break
-            await websocket.send_json(msg)
-            if msg.get("type") in ("error", "done"):
-                break
-    except (WebSocketDisconnect, Exception):
-        pass
+
+@app.get("/analyze/status/{job_id}")
+async def analyze_status(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None:
+            raise HTTPException(404, "Job non trovato o scaduto")
+        return JSONResponse({
+            "status":  job["status"],
+            "windows": job["windows"],
+            "result":  job["result"],
+            "error":   job["error"],
+        })
 
 
 @app.get("/admin", response_class=HTMLResponse)
