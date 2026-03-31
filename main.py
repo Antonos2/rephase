@@ -179,10 +179,11 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
     # Probe duration to estimate conversion time
     from core.converter import _get_duration
     duration_sec  = _get_duration(tmp_in) or 0.0
-    estimated_sec = max(60, duration_sec * 2.5)
+    duration_min  = round(duration_sec / 60, 1)          # secondi → minuti per il frontend
+    estimated_min = max(1, round(duration_min))           # stima lineare: 1 min di brano ≈ 1 min di conversione
     # SoX processes at most 90 s of audio; give 3× that as hard timeout
     sox_timeout   = max(120, int(min(duration_sec, 90) * 3))
-    print(f"[convert/start] duration={duration_sec:.1f}s  estimated={estimated_sec:.0f}s  sox_timeout={sox_timeout}s", flush=True)
+    print(f"[convert/start] duration={duration_sec:.1f}s ({duration_min} min)  estimated={estimated_min} min  sox_timeout={sox_timeout}s", flush=True)
 
     job_id = str(uuid.uuid4())
     start_time = _time.time()
@@ -236,8 +237,8 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
     return JSONResponse({
         "job_id":        job_id,
         "start_time":    start_time,
-        "duration_sec":  round(duration_sec, 1),
-        "estimated_sec": round(estimated_sec),
+        "duration_min":  duration_min,    # già in minuti (durata_sec / 60)
+        "estimated_min": estimated_min,   # già in minuti (stima lineare)
     })
 
 

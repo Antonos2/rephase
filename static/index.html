@@ -1915,17 +1915,17 @@ document.getElementById('file-convert').addEventListener('change', function() {
       return;
     }
     const resp = JSON.parse(xhr.responseText);
-    const { job_id, duration_sec, estimated_sec } = resp;
+    const { job_id, duration_min, estimated_min } = resp;
 
     // Build duration / estimate message
-    const _fmtMin = (s) => s < 90 ? Math.round(s) + ' s' : (s / 60).toFixed(1) + ' min';
+    // duration_min e estimated_min arrivano già in minuti dal backend (durata_sec / 60)
     let infoLine = '';
-    if (duration_sec > 0) {
-      infoLine = 'Durata brano: ' + _fmtMin(duration_sec) +
-                 ' \u2014 tempo stimato conversione: ' + _fmtMin(estimated_sec);
-      if (duration_sec > 3600) {
+    if (duration_min > 0) {
+      infoLine = 'Durata brano: ' + duration_min.toFixed(1) + ' min' +
+                 ' \u2014 tempo stimato conversione: ' + estimated_min + ' min';
+      if (duration_min > 60) {
         infoLine += '\nFile molto lungo \u2014 la conversione potrebbe richiedere fino a ' +
-                    Math.ceil(estimated_sec / 60) + ' minuti';
+                    estimated_min + ' minuti';
       }
     }
     uploadLabel.textContent = infoLine || 'Caricamento completato \u2014 avvio conversione...';
