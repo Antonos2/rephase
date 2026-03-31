@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os, uuid, threading
 import time as _time
-import json as _json
 import aiofiles
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header, Form
@@ -9,57 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from core.converter import convert_to_432, analyze_file
 
-# ── In-memory job store (analysis) ───────────────────────────────────────────
+# ── In-memory job store (analysis only) ──────────────────────────────────────
 _jobs: dict = {}
 _jobs_lock = threading.Lock()
 
-# ── File-based job store (conversion) ────────────────────────────────────────
-# Each conversion job is persisted to /tmp/rephase/jobs/{job_id}.json so that
-# a process restart on Render Free does not cause 404 during long conversions.
-_conv_jobs_lock = threading.Lock()   # guards all reads/writes to JOBS_DIR
-
-TEMP_DIR_EARLY = Path("/tmp/rephase")
-TEMP_DIR_EARLY.mkdir(exist_ok=True)
-JOBS_DIR = TEMP_DIR_EARLY / "jobs"
-JOBS_DIR.mkdir(exist_ok=True)
-
-
-def _write_conv_job(job_id: str, data: dict) -> None:
-    """Persist job dict to disk. Caller must hold _conv_jobs_lock."""
-    path = JOBS_DIR / f"{job_id}.json"
-    tmp  = path.with_suffix(".tmp")
-    with open(str(tmp), "w") as fh:
-        _json.dump(data, fh)
-    tmp.replace(path)   # atomic on POSIX
-
-
-def _read_conv_job(job_id: str) -> dict | None:
-    """Load job dict from disk. Returns None if missing or corrupt."""
-    path = JOBS_DIR / f"{job_id}.json"
-    try:
-        with open(str(path)) as fh:
-            return _json.load(fh)
-    except (FileNotFoundError, _json.JSONDecodeError):
-        return None
-
-
-def _delete_conv_job(job_id: str) -> None:
-    """Remove job JSON file. Caller must hold _conv_jobs_lock."""
-    path = JOBS_DIR / f"{job_id}.json"
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-
 
 def _cleanup_jobs():
-    """Background thread: remove completed/failed jobs older than 30 minutes.
-    Jobs with status='running' are NEVER removed."""
+    """Background thread: remove completed/failed analysis jobs older than 30 min."""
     while True:
         _time.sleep(300)
-        cutoff = _time.time() - 1800  # 30 minutes
-
-        # Analysis jobs (in-memory)
+        cutoff = _time.time() - 1800
         with _jobs_lock:
             expired = [k for k, v in _jobs.items()
                        if v.get("status") in ("done", "error")
@@ -67,29 +25,14 @@ def _cleanup_jobs():
             for k in expired:
                 del _jobs[k]
 
-        # Conversion jobs (file-based)
-        with _conv_jobs_lock:
-            for jpath in JOBS_DIR.glob("*.json"):
-                try:
-                    with open(str(jpath)) as fh:
-                        job = _json.load(fh)
-                    if (job.get("status") in ("done", "error")
-                            and job.get("last_accessed", job.get("created_at", 0)) < cutoff):
-                        out = job.get("out_path", "")
-                        if out and os.path.exists(out):
-                            try: os.remove(out)
-                            except Exception: pass
-                        jpath.unlink()
-                except Exception:
-                    pass
-
 
 threading.Thread(target=_cleanup_jobs, daemon=True).start()
 
 app = FastAPI(title="Rephase API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-TEMP_DIR = TEMP_DIR_EARLY   # already created above
+TEMP_DIR = Path("/tmp/rephase")
+TEMP_DIR.mkdir(exist_ok=True)
 ALLOWED = {".mp3",".m4a",".wav",".flac",".aac",".aiff"}
 MAX_SIZE = 500*1024*1024
 
@@ -157,10 +100,10 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
         stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
     return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4", headers=stats_headers)
 
-# ── Polling-based conversion ───────────────────────────────────────────────────
+# ── Synchronous conversion (no job state, no polling) ─────────────────────────
 
-@app.post("/convert/start")
-async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
+@app.post("/convert/sync")
+async def convert_sync(background_tasks: BackgroundTasks, file: UploadFile = File(...), format: str = "mp3"):
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED:
         raise HTTPException(400, f"Formato non supportato: {ext}")
@@ -176,137 +119,66 @@ async def convert_start(file: UploadFile = File(...), format: str = "mp3"):
     with open(tmp_in, "wb") as fh:
         fh.write(content)
 
-    # Probe duration to estimate conversion time
-    from core.converter import _get_duration
-    duration_sec  = _get_duration(tmp_in) or 0.0
-    duration_min  = round(duration_sec / 60, 1)          # secondi → minuti per il frontend
-    estimated_min = max(1, round(duration_min))           # stima lineare: 1 min di brano ≈ 1 min di conversione
-    # SoX processes at most 90 s of audio; give 3× that as hard timeout
-    sox_timeout   = max(120, int(min(duration_sec, 90) * 3))
-    print(f"[convert/start] duration={duration_sec:.1f}s ({duration_min} min)  estimated={estimated_min} min  sox_timeout={sox_timeout}s", flush=True)
+    try:
+        import asyncio, functools
+        loop = asyncio.get_event_loop()
 
-    job_id = str(uuid.uuid4())
-    start_time = _time.time()
-    with _conv_jobs_lock:
-        _write_conv_job(job_id, {
-            "status":        "running",
-            "already_432":   None,
-            "result":        None,
-            "error":         None,
-            "created_at":    start_time,
-            "start_time":    start_time,
-            "out_path":      tmp_out,
-            "format":        format,
-            "filename":      file.filename,
-            "duration_sec":  duration_sec,
-            "last_accessed": start_time,
-        })
+        # Analisi pre-conversione (in thread pool — non blocca l'event loop)
+        pre_check = await loop.run_in_executor(None, analyze_file, tmp_in)
+        if pre_check.get("is_432"):
+            return JSONResponse({
+                "already_432":  True,
+                "peak_freq":    pre_check["peak_freq"],
+                "cents_vs_432": pre_check["cents_vs_432"],
+                "message":      "Il brano \u00e8 gi\u00e0 a 432 Hz \u2014 nessuna conversione necessaria.",
+            })
 
-    def _run():
-        def _patch(**kwargs):
-            with _conv_jobs_lock:
-                job = _read_conv_job(job_id)
-                if job is not None:
-                    job.update(kwargs)
-                    _write_conv_job(job_id, job)
+        from core.converter import _get_duration
+        duration_sec = _get_duration(tmp_in) or 0.0
+        sox_timeout  = max(120, int(min(duration_sec, 90) * 3))
+        print(f"[convert/sync] duration={duration_sec:.1f}s  sox_timeout={sox_timeout}s", flush=True)
 
-        try:
-            from core.converter import analyze_file as _af
-            pre_check = _af(tmp_in)
-            if pre_check.get("is_432"):
-                _patch(status="done", already_432=True, result=pre_check)
-                return
+        # Conversione SoX (in thread pool)
+        result = await loop.run_in_executor(
+            None,
+            functools.partial(convert_to_432, tmp_in, tmp_out, max_seconds=90, sox_timeout=sox_timeout),
+        )
+        if not result["success"]:
+            raise HTTPException(500, result.get("error", "Errore sconosciuto"))
 
-            result = convert_to_432(tmp_in, tmp_out, max_seconds=90, sox_timeout=sox_timeout)
-            if not result["success"]:
-                _patch(status="error", error=result.get("error", "Errore sconosciuto"))
-                return
+        stem = Path(file.filename).stem
+        exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes,X-Trimmed-Seconds"
+        stats_headers = {
+            "X-Trimmed-Seconds":   "90",
+            "X-Pre-Freq":          str(round(result.get("pre_freq", 0), 4)),
+            "X-Shift-Cents":       str(round(result.get("shift_applied", 0), 4)),
+            "X-Post-Freq":         str(round(result.get("post_freq", 0), 4)),
+            "X-Post-Cents":        str(round(result.get("post_cents_vs_432", 0), 4)),
+            "X-Certified":         str(result.get("certified", False)),
+            "X-Correction-Passes": str(result.get("correction_passes", 1)),
+            "Access-Control-Expose-Headers": exposed,
+        }
+        if result.get("corr_pass_error"):
+            stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
+            stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
 
-            _patch(status="done", already_432=result.get("already_432", False), result=result)
-
-        except Exception as e:
-            import traceback
-            print(f"[conv_job {job_id[:8]}] Exception:\n{traceback.format_exc()}", flush=True)
-            _patch(status="error", error=str(e))
-        finally:
-            if os.path.exists(tmp_in):
-                try: os.remove(tmp_in)
-                except Exception: pass
-
-    threading.Thread(target=_run, daemon=True).start()
-    return JSONResponse({
-        "job_id":        job_id,
-        "start_time":    start_time,
-        "duration_min":  duration_min,    # già in minuti (durata_sec / 60)
-        "estimated_min": estimated_min,   # già in minuti (stima lineare)
-    })
-
-
-@app.get("/convert/status/{job_id}")
-async def convert_status(job_id: str):
-    with _conv_jobs_lock:
-        job = _read_conv_job(job_id)
-        if job is None:
-            raise HTTPException(404, "Job non trovato o scaduto")
-        job["last_accessed"] = _time.time()
-        _write_conv_job(job_id, job)
-    return JSONResponse({
-        "status":      job["status"],
-        "start_time":  job["start_time"],
-        "already_432": job.get("already_432"),
-        "result":      job.get("result"),
-        "error":       job.get("error"),
-    })
-
-
-@app.get("/convert/download/{job_id}")
-async def convert_download(job_id: str, background_tasks: BackgroundTasks):
-    with _conv_jobs_lock:
-        job = _read_conv_job(job_id)
-        if job is None:
-            raise HTTPException(404, "Job non trovato o scaduto")
-        if job["status"] != "done":
-            raise HTTPException(400, "Conversione non completata")
-        if job.get("already_432"):
-            raise HTTPException(400, "File già a 432 Hz — nessun file da scaricare")
-        out_path = job["out_path"]
-        result   = job["result"]
-        fmt      = job["format"]
-        filename = job["filename"]
-
-    if not os.path.exists(out_path):
-        raise HTTPException(500, f"File output non trovato: {out_path}")
-
-    stem = Path(filename).stem
-    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes,X-Trimmed-Seconds"
-    stats_headers = {
-        "X-Trimmed-Seconds":     "90",
-        "X-Pre-Freq":            str(round(result.get("pre_freq", 0), 4)),
-        "X-Shift-Cents":         str(round(result.get("shift_applied", 0), 4)),
-        "X-Post-Freq":           str(round(result.get("post_freq", 0), 4)),
-        "X-Post-Cents":          str(round(result.get("post_cents_vs_432", 0), 4)),
-        "X-Certified":           str(result.get("certified", False)),
-        "X-Correction-Passes":   str(result.get("correction_passes", 1)),
-        "Access-Control-Expose-Headers": exposed,
-    }
-    if result.get("corr_pass_error"):
-        stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
-        stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
-
-    def _remove_job():
-        with _conv_jobs_lock:
-            _delete_conv_job(job_id)
-        if os.path.exists(out_path):
-            try: os.remove(out_path)
+        background_tasks.add_task(cleanup, tmp_out)
+        return FileResponse(
+            path=tmp_out,
+            filename=f"{stem}_432.{format}",
+            media_type="audio/mpeg" if format == "mp3" else "audio/mp4",
+            headers=stats_headers,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[convert/sync] Exception:\n{traceback.format_exc()}", flush=True)
+        raise HTTPException(500, str(e))
+    finally:
+        if os.path.exists(tmp_in):
+            try: os.remove(tmp_in)
             except Exception: pass
-
-    background_tasks.add_task(_remove_job)
-    return FileResponse(
-        path=out_path,
-        filename=f"{stem}_432.{fmt}",
-        media_type="audio/mpeg" if fmt == "mp3" else "audio/mp4",
-        headers=stats_headers,
-    )
 
 
 import asyncio
