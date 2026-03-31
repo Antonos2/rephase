@@ -14,3 +14,5 @@ services:
         sync: false
       - key: ADMIN_FIXED_COSTS_CHF
         value: "0"
+      - key: PATH
+        value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
