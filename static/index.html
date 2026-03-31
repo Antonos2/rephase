@@ -305,6 +305,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
           <div class="verdict-text" id="rv-text">—</div>
         </div>
         <div id="rv-detail" style="font-size:11px;color:#444;margin:-12px 0 12px 0;padding:0 4px;line-height:1.7;"></div>
+        <div id="btn-converti-ora" style="display:none;text-align:center;margin:12px 0;"><button class="btn-green" style="font-size:14px;padding:11px 32px;">Converti ora a 432 Hz</button></div>
         <!-- Hz timeline chart (always built, shown when data available) -->
         <div class="hz-timeline-section hidden" id="hz-timeline-section">
           <div class="hz-timeline-header">
@@ -490,6 +491,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 <script>
 const API="";
 let fmt="mp3",convTimer=null,convPct=0;
+let _pendingVerifyFile = null;
 let fftChart = null, fftChartConv = null, fftChartZoom = null, fftChartZoomVerify = null;
 let convertOrigFile = null, convertBlob = null, convertHeaders = null;
 let _isPlanProAnnual = false;
@@ -1070,7 +1072,7 @@ function setBilling(mode,el){
   const certBtn = document.getElementById('cert-gen-btn');
   if (certBtn) { certBtn.classList.toggle('locked', !annual); certBtn.firstChild.textContent = annual ? ' Certifica questo brano & Registra su Blockchain →' : '🔒 Certifica questo brano & Registra su Blockchain →'; }
 }
-function switchTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');}
+function switchTab(t){if(t==="convert"&&_pendingVerifyFile){setTimeout(function(){startConvertWithFile(_pendingVerifyFile);_pendingVerifyFile=null;},100);}document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');}
 function selectFormat(f,el){fmt=f;document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');}
 let _soxTimer = null;
 function _stopSoxAnim() { clearInterval(_soxTimer); _soxTimer = null; }
@@ -1718,6 +1720,10 @@ document.getElementById('file-verify').addEventListener('change', async function
         }
         document.getElementById('rv-detail').textContent = detail;
         document.getElementById('result-verify').classList.remove('hidden');
+        if (!ok) {
+          const btnConv = document.getElementById('btn-converti-ora');
+          if (btnConv) { btnConv.style.display = 'inline-block'; btnConv.onclick = function() { _pendingVerifyFile = file; switchTab('convert'); }; }
+        }
         document.getElementById('cert-section').classList.remove('hidden');
         renderSpectral(d, file.name, _verifyHash, _verifyTime);
       } else if (data.status === 'error') {
@@ -1769,7 +1775,23 @@ document.getElementById('file-verify').addEventListener('change', async function
   xhr.send(fd);
 });
 
-document.getElementById('file-convert').addEventListener('change', function() {
+function startConvertWithFile(file){
+  document.getElementById("convert-label").textContent = file.name;
+  document.getElementById("cv-detail").textContent = "";
+  document.getElementById("result-convert").classList.add("hidden");
+  document.getElementById("result-already432").classList.add("hidden");
+  document.getElementById("btn-spectral-conv").classList.add("hidden");
+  document.getElementById("spectral-panel-conv").classList.add("hidden");
+  document.getElementById("sox-sub").style.display = "none";
+  document.getElementById("sox-sub").textContent = "";
+  convertOrigFile = null; convertBlob = null; convertHeaders = null;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const inp = document.getElementById("file-convert");
+  inp.files = dt.files;
+  inp.dispatchEvent(new Event("change"));
+}
+document.getElementById("file-convert").addEventListener('change', function() {
   const file = this.files[0];
   if (!file) return;
 
@@ -1811,8 +1833,8 @@ document.getElementById('file-convert').addEventListener('change', function() {
     uploadFill.style.width = '0%';
     uploadLabel.textContent = 'SoX in elaborazione...';
     const sox = document.getElementById('sox-sub');
-    sox.textContent = 'SoX in elaborazione...';
-    sox.style.display = 'block';
+
+    sox.style.display = "none";
     _procTimer = setInterval(() => {
       if (_procPct < 95) { _procPct = Math.min(95, _procPct + 0.4); }
       uploadFill.style.width = _procPct.toFixed(1) + '%';
