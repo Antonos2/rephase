@@ -111,14 +111,13 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if analysis.get("is_432"):
         background_tasks.add_task(cleanup, tmp_in)
         return JSONResponse({"already_432": True, "peak_freq": analysis["peak_freq"], "cents_vs_432": analysis["cents_vs_432"], "message": "Il brano \u00e8 gi\u00e0 a 432 Hz \u2014 nessuna conversione necessaria."})
-    result = convert_to_432(tmp_in, tmp_out, max_seconds=90)
+    result = convert_to_432(tmp_in, tmp_out)
     background_tasks.add_task(cleanup, tmp_in)
     if not result["success"]: raise HTTPException(500, result.get("error","Errore"))
     background_tasks.add_task(cleanup, tmp_out)
     stem = Path(file.filename).stem
-    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes,X-Trimmed-Seconds"
+    exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes"
     stats_headers = {
-        "X-Trimmed-Seconds": "90",
         "X-Pre-Freq":          str(round(result.get("pre_freq", 0), 4)),
         "X-Shift-Cents":       str(round(result.get("shift_applied", 0), 4)),
         "X-Post-Freq":         str(round(result.get("post_freq", 0), 4)),
@@ -130,7 +129,9 @@ async def convert(background_tasks: BackgroundTasks, file: UploadFile = File(...
     if result.get("corr_pass_error"):
         stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
         stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
-    return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}", media_type="audio/mpeg" if format=="mp3" else "audio/mp4", headers=stats_headers)
+    return FileResponse(path=tmp_out, filename=f"{stem}_432.{format}",
+                        media_type="audio/mpeg" if format=="mp3" else "audio/mp4",
+                        headers=stats_headers)
 
 # ── Synchronous conversion (no job state, no polling) ─────────────────────────
 
@@ -167,27 +168,27 @@ async def convert_sync(background_tasks: BackgroundTasks, file: UploadFile = Fil
 
         from core.converter import _get_duration
         duration_sec = _get_duration(tmp_in) or 0.0
-        sox_timeout  = max(120, int(min(duration_sec, 90) * 3))
+        # Timeout per file completo: 3× la durata reale, minimo 120 s
+        sox_timeout  = max(120, int(duration_sec * 3))
         print(f"[convert/sync] duration={duration_sec:.1f}s  sox_timeout={sox_timeout}s", flush=True)
 
-        # Conversione SoX (in thread pool)
+        # Conversione SoX sull'intero file (in thread pool)
         result = await loop.run_in_executor(
             None,
-            functools.partial(convert_to_432, tmp_in, tmp_out, max_seconds=90, sox_timeout=sox_timeout),
+            functools.partial(convert_to_432, tmp_in, tmp_out, sox_timeout=sox_timeout),
         )
         if not result["success"]:
             raise HTTPException(500, result.get("error", "Errore sconosciuto"))
 
         stem = Path(file.filename).stem
-        exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes,X-Trimmed-Seconds"
+        exposed = "X-Pre-Freq,X-Shift-Cents,X-Post-Freq,X-Post-Cents,X-Certified,X-Correction-Passes"
         stats_headers = {
-            "X-Trimmed-Seconds":   "90",
             "X-Pre-Freq":          str(round(result.get("pre_freq", 0), 4)),
             "X-Shift-Cents":       str(round(result.get("shift_applied", 0), 4)),
             "X-Post-Freq":         str(round(result.get("post_freq", 0), 4)),
             "X-Post-Cents":        str(round(result.get("post_cents_vs_432", 0), 4)),
             "X-Certified":         str(result.get("certified", False)),
-            "X-Correction-Passes": str(result.get("correction_passes", 1)),
+            "X-Correction-Passes": str(round(result.get("correction_passes", 1))),
             "Access-Control-Expose-Headers": exposed,
         }
         if result.get("corr_pass_error"):

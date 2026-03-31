@@ -290,7 +290,9 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
         print(f"[convert] start  sox={sox_path}  ffmpeg={_sh.which('ffmpeg')}  in={input_path}", flush=True)
         if not sox_path:
             return {"success": False, "error": "SoX non trovato sul server — assicurarsi che sox sia installato (build.sh)"}
-        _load_as_wav(input_path, tmp_in, channels=2, max_seconds=max_seconds)
+        # channels=1 (mono): coerente con la post-analisi e con analyze_file(),
+        # evita problemi con SoX pitch su stereo interleaved.
+        _load_as_wav(input_path, tmp_in, channels=1, max_seconds=max_seconds)
         tmp_in_size = os.path.getsize(tmp_in) if os.path.exists(tmp_in) else -1
         print(f"[convert] decode_done  tmp_in_size={tmp_in_size}", flush=True)
         if tmp_in_size <= 0:
@@ -346,7 +348,15 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
         certified  = abs(post_cents) < CERT_THRESHOLD_CENTS
         correction_passes = 1
         corr_pass_error = None
-        print(f"[convert] post_freq={post['peak_freq']:.4f} Hz  post_cents={post_cents:+.4f}  certified={certified}  second_pass_trigger={not certified and abs(post_cents) < 30.0}", flush=True)
+        # Sanity check: se lo shift era negativo (abbassare pitch) ma post > pre, qualcosa è andato storto
+        wrong_direction = (shift_cents < 0 and post["peak_freq"] > a4_original * 1.001) or \
+                          (shift_cents > 0 and post["peak_freq"] < a4_original * 0.999)
+        print(f"[convert] post_freq={post['peak_freq']:.4f} Hz  post_cents={post_cents:+.4f}  "
+              f"certified={certified}  wrong_direction={wrong_direction}  "
+              f"second_pass_trigger={not certified and abs(post_cents) < 30.0}", flush=True)
+        if wrong_direction:
+            print(f"[convert] WARNING: shift_cents={shift_cents:+.4f} ma post_freq={post['peak_freq']:.4f} > pre_freq={a4_original:.4f} — "
+                  "possibile bug SoX pitch direction o canali audio", flush=True)
 
         # Corrective second pass: re-apply from original WAV with compensated shift.
         if not certified and abs(post_cents) < 30.0:
