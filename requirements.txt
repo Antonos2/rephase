@@ -4,3 +4,4 @@ aiofiles
 python-multipart
 numpy
 scipy
+psutil
