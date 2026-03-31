@@ -28,6 +28,20 @@ def _cleanup_jobs():
 
 threading.Thread(target=_cleanup_jobs, daemon=True).start()
 
+# ── Startup diagnostic: log sox/ffmpeg paths immediately ─────────────────────
+import shutil as _shutil, subprocess as _sp_startup
+def _log_tool(name):
+    p = _shutil.which(name)
+    if not p:
+        try:
+            r = _sp_startup.run(["which", name], capture_output=True, text=True, timeout=5)
+            p = r.stdout.strip() or None
+        except Exception:
+            pass
+    print(f"[startup] {name}: {p or 'NOT FOUND'}", flush=True)
+_log_tool("sox")
+_log_tool("ffmpeg")
+
 app = FastAPI(title="Rephase API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -46,8 +60,26 @@ def root():
 
 @app.get("/health")
 def health():
-    import shutil
-    return {"status":"ok","sox":shutil.which("sox") is not None,"ffmpeg":shutil.which("ffmpeg") is not None}
+    import shutil, subprocess as _sp
+    sox_which   = shutil.which("sox")
+    ffmpeg_which = shutil.which("ffmpeg")
+    # Fallback: ask the shell directly (covers non-standard PATH on Render)
+    def _shell_which(cmd):
+        try:
+            r = _sp.run(["which", cmd], capture_output=True, text=True, timeout=5)
+            return r.stdout.strip() or None
+        except Exception:
+            return None
+    sox_path   = sox_which   or _shell_which("sox")
+    ffmpeg_path = ffmpeg_which or _shell_which("ffmpeg")
+    print(f"[health] sox={sox_path}  ffmpeg={ffmpeg_path}", flush=True)
+    return {
+        "status": "ok",
+        "sox":    sox_path is not None,
+        "sox_path": sox_path,
+        "ffmpeg": ffmpeg_path is not None,
+        "ffmpeg_path": ffmpeg_path,
+    }
 
 @app.post("/verify")
 async def verify(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
