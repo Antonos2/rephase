@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os, uuid, threading
+import stripe
 import time as _time
 import hashlib
 import logging
@@ -739,23 +740,28 @@ if __name__ == "__main__":
 # ── Stripe Checkout ────────────────────────────────────────────────────────
 
 @app.post("/create-checkout-session")
-def create_checkout_session(payload: dict):
+async def create_checkout_session(request: Request):
     """Crea una sessione Stripe Checkout per abbonamento mensile o annuale."""
-    import stripe
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Body JSON non valido"}, status_code=400)
+
     stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
-    
-    plan = payload.get("plan", "monthly")
-    
+    if not stripe.api_key:
+        return JSONResponse({"error": "STRIPE_SECRET_KEY non configurata"}, status_code=500)
+
+    plan = body.get("plan", "monthly")
     if plan == "annual":
         price_id = os.environ.get("STRIPE_PRICE_ANNUAL", "")
     else:
         price_id = os.environ.get("STRIPE_PRICE_MONTHLY", "")
-    
+
     if not price_id:
-        raise HTTPException(400, f"Price ID non configurato per piano: {plan}")
-    
+        return JSONResponse({"error": f"Price ID non configurato per piano: {plan}"}, status_code=400)
+
     base_url = os.environ.get("BASE_URL", "https://rephase-app.onrender.com")
-    
+
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -765,6 +771,8 @@ def create_checkout_session(payload: dict):
             cancel_url=f"{base_url}/app?payment=cancelled",
         )
         return JSONResponse({"url": session.url})
+    except stripe.error.StripeError as e:
+        return JSONResponse({"error": f"Stripe error: {e.user_message or str(e)}"}, status_code=502)
     except Exception as e:
-        raise HTTPException(502, f"Stripe error: {e}")
+        return JSONResponse({"error": f"Errore interno: {str(e)}"}, status_code=500)
 
