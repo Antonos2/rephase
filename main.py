@@ -742,12 +742,16 @@ if __name__ == "__main__":
 @app.post("/create-checkout-session")
 async def create_checkout_session(request: Request):
     """Crea una sessione Stripe Checkout per abbonamento mensile o annuale."""
+    print("[checkout] route chiamata", flush=True)
     try:
         body = await request.json()
-    except Exception:
+        print(f"[checkout] body={body}", flush=True)
+    except Exception as e:
+        print(f"[checkout] body parse error: {e}", flush=True)
         return JSONResponse({"error": "Body JSON non valido"}, status_code=400)
 
     stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    print(f"[checkout] stripe_key={'SET' if stripe.api_key else 'MISSING'}", flush=True)
     if not stripe.api_key:
         return JSONResponse({"error": "STRIPE_SECRET_KEY non configurata"}, status_code=500)
 
@@ -756,6 +760,7 @@ async def create_checkout_session(request: Request):
         price_id = os.environ.get("STRIPE_PRICE_ANNUAL", "")
     else:
         price_id = os.environ.get("STRIPE_PRICE_MONTHLY", "")
+    print(f"[checkout] plan={plan} price_id={'SET('+price_id[:12]+')' if price_id else 'MISSING'}", flush=True)
 
     if not price_id:
         return JSONResponse({"error": f"Price ID non configurato per piano: {plan}"}, status_code=400)
@@ -770,9 +775,9 @@ async def create_checkout_session(request: Request):
             success_url=f"{base_url}/app?payment=success",
             cancel_url=f"{base_url}/app?payment=cancelled",
         )
+        print(f"[checkout] session creata: {session.id}", flush=True)
         return JSONResponse({"url": session.url})
-    except stripe.error.StripeError as e:
-        return JSONResponse({"error": f"Stripe error: {e.user_message or str(e)}"}, status_code=502)
     except Exception as e:
-        return JSONResponse({"error": f"Errore interno: {str(e)}"}, status_code=500)
+        print(f"[checkout] ERRORE stripe: {type(e).__name__}: {e}", flush=True)
+        return JSONResponse({"error": f"Stripe error: {str(e)}"}, status_code=502)
 

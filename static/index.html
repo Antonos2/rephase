@@ -1074,7 +1074,7 @@ async function startCheckout(){
       body: JSON.stringify({plan})
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Errore server');
+    if (!res.ok) throw new Error(data.error || data.detail || 'Errore server');
     window.location.href = data.url;
   } catch(e) {
     btn.disabled = false;
