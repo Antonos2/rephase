@@ -734,3 +734,37 @@ def certify_report(payload: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True, timeout_keep_alive=600)
+
+
+# ── Stripe Checkout ────────────────────────────────────────────────────────
+
+@app.post("/create-checkout-session")
+def create_checkout_session(payload: dict):
+    """Crea una sessione Stripe Checkout per abbonamento mensile o annuale."""
+    import stripe
+    stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    
+    plan = payload.get("plan", "monthly")
+    
+    if plan == "annual":
+        price_id = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+    else:
+        price_id = os.environ.get("STRIPE_PRICE_MONTHLY", "")
+    
+    if not price_id:
+        raise HTTPException(400, f"Price ID non configurato per piano: {plan}")
+    
+    base_url = os.environ.get("BASE_URL", "https://rephase-app.onrender.com")
+    
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode="subscription",
+            success_url=f"{base_url}/app?payment=success",
+            cancel_url=f"{base_url}/app?payment=cancelled",
+        )
+        return JSONResponse({"url": session.url})
+    except Exception as e:
+        raise HTTPException(502, f"Stripe error: {e}")
+
