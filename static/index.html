@@ -64,6 +64,9 @@ input[type=file] { display: none; }
 .plan-features { list-style: none; }
 .plan-features li { font-size: 13px; color: #333; padding: 5px 0; display: flex; align-items: center; gap: 8px; }
 .plan-features li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex-shrink: 0; }
+.plan-cta { display: block; width: 100%; margin-top: 20px; padding: 14px; background: #34c759; color: #1a1a1a; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.15s; }
+.plan-cta:hover { background: #2db34e; }
+.plan-cta:disabled { opacity: 0.6; cursor: not-allowed; }
 .billing-toggle { display: flex; background: #c8c8c8; border-radius: 980px; padding: 3px; margin-bottom: 14px; }
 .billing-opt { flex: 1; text-align: center; font-size: 12px; font-weight: 500; color: #555; padding: 5px 0; border-radius: 980px; cursor: pointer; transition: background .15s, color .15s; }
 .billing-opt.active { background: #34c759; color: #1a1a1a; }
@@ -481,6 +484,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <li>Conversione batch</li>
         <li id="feat-blockchain" style="display:none;">🔒 Certificazione blockchain — documento legale con SHA256, timestamp e anchor Bitcoin</li>
       </ul>
+      <button id="checkout-btn" onclick="startCheckout()" class="plan-cta">Abbonati ora</button>
     </div>
   </div>
 </div>
@@ -1056,6 +1060,27 @@ function renderSpectralConvert(origData, convData, h) {
       }
     }
   );
+}
+async function startCheckout(){
+  const btn = document.getElementById('checkout-btn');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Caricamento...';
+  try {
+    const plan = _isPlanProAnnual ? 'annual' : 'monthly';
+    const res = await fetch(API + '/create-checkout-session', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plan})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Errore server');
+    window.location.href = data.url;
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = origText;
+    alert('Errore durante il pagamento: ' + e.message);
+  }
 }
 function setBilling(mode,el){
   el.parentNode.querySelectorAll('.billing-opt').forEach(o=>o.classList.remove('active'));
