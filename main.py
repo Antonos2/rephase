@@ -133,7 +133,8 @@ def cleanup(path):
 
 @app.get("/")
 def root():
-    return {"name":"Rephase API","version":"1.0.0","motto":"Out of phase? Get Rephase.","status":"online"}
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/app", status_code=301)
 
 @app.get("/health")
 def health():
