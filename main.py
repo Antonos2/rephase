@@ -461,6 +461,28 @@ async def frontend():
     with open("static/index.html") as f:
         return f.read()
 
+# ── Legal pages ──────────────────────────────────────────────────────────────
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_it():
+    with open("static/privacy.html") as f:
+        return f.read()
+
+@app.get("/privacy/en", response_class=HTMLResponse)
+async def privacy_en():
+    with open("static/privacy_en.html") as f:
+        return f.read()
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_it():
+    with open("static/terms.html") as f:
+        return f.read()
+
+@app.get("/terms/en", response_class=HTMLResponse)
+async def terms_en():
+    with open("static/terms_en.html") as f:
+        return f.read()
+
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
 _ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
