@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update -y && \
-    apt-get install -y ffmpeg sox && \
+    apt-get install -y ffmpeg sox rubberband-cli && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

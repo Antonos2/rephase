@@ -116,6 +116,7 @@ def _log_tool(name):
         except Exception:
             pass
     print(f"[startup] {name}: {p or 'NOT FOUND'}", flush=True)
+_log_tool("rubberband")
 _log_tool("sox")
 _log_tool("ffmpeg")
 
@@ -139,23 +140,31 @@ def root():
 @app.get("/health")
 def health():
     import shutil, subprocess as _sp
-    sox_which    = shutil.which("sox")
-    ffmpeg_which = shutil.which("ffmpeg")
-    def _shell_which(cmd):
+    def _resolve(name):
+        p = shutil.which(name)
+        if p: return p
         try:
-            r = _sp.run(["which", cmd], capture_output=True, text=True, timeout=5)
-            return r.stdout.strip() or None
+            r = _sp.run(["which", name], capture_output=True, text=True, timeout=5)
+            p = r.stdout.strip()
+            if p: return p
         except Exception:
-            return None
-    sox_path    = sox_which    or _shell_which("sox")
-    ffmpeg_path = ffmpeg_which or _shell_which("ffmpeg")
-    print(f"[health] sox={sox_path}  ffmpeg={ffmpeg_path}", flush=True)
+            pass
+        hc = f"/usr/bin/{name}"
+        return hc if os.path.isfile(hc) else None
+    rb_path     = _resolve("rubberband")
+    sox_path    = _resolve("sox")
+    ffmpeg_path = _resolve("ffmpeg")
+    engine      = "rubberband" if rb_path else ("sox" if sox_path else "none")
+    print(f"[health] rubberband={rb_path}  sox={sox_path}  ffmpeg={ffmpeg_path}  engine={engine}", flush=True)
     return {
-        "status":      "ok",
-        "sox":         sox_path is not None,
-        "sox_path":    sox_path,
-        "ffmpeg":      ffmpeg_path is not None,
-        "ffmpeg_path": ffmpeg_path,
+        "status":          "ok",
+        "engine":          engine,
+        "rubberband":      rb_path is not None,
+        "rubberband_path": rb_path,
+        "sox":             sox_path is not None,
+        "sox_path":        sox_path,
+        "ffmpeg":          ffmpeg_path is not None,
+        "ffmpeg_path":     ffmpeg_path,
     }
 
 # ══════════════════════════════════════════════════════════════════════════════

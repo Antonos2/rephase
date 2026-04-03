@@ -280,25 +280,63 @@ def analyze_file(input_path):
     finally:
         if os.path.exists(tmp_wav): os.remove(tmp_wav)
 
-def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
+def _find_tool(name):
+    """Trova un tool nell'ordine: shutil.which → subprocess which → /usr/bin hardcoded."""
     import shutil as _sh
+    p = _sh.which(name)
+    if p:
+        return p
+    try:
+        r = subprocess.run(["which", name], capture_output=True, text=True, timeout=5)
+        p = r.stdout.strip()
+        if p:
+            return p
+    except Exception:
+        pass
+    hardcoded = f"/usr/bin/{name}"
+    if os.path.isfile(hardcoded):
+        return hardcoded
+    return None
+
+def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubberband"):
+    """Pitch shift via rubberband (primario) o SoX (fallback).
+    Ritorna il nome dell'engine usato o solleva un'eccezione."""
+    rb_path  = _find_tool("rubberband")
+    sox_path = _find_tool("sox")
+
+    # rubberband: --pitch-scale accetta un fattore moltiplicativo
+    # fattore = 2^(cents/1200)  — es. -26.75 cent → 0.98469
+    pitch_scale = 2.0 ** (shift_cents / 1200.0)
+
+    if rb_path and engine_pref == "rubberband":
+        print(f"[pitch_shift] rubberband  scale={pitch_scale:.6f}  cents={shift_cents:+.4f}", flush=True)
+        subprocess.run(
+            [rb_path, "--pitch-scale", f"{pitch_scale:.8f}", "--crisp", "6",
+             input_wav, output_wav],
+            check=True, capture_output=True, timeout=timeout)
+        return "rubberband"
+
+    if sox_path:
+        print(f"[pitch_shift] sox_fallback  cents={shift_cents:+.4f}", flush=True)
+        subprocess.run(
+            [sox_path, input_wav, output_wav, "pitch", f"{shift_cents:.4f}"],
+            check=True, capture_output=True, timeout=timeout)
+        return "sox"
+
+    raise RuntimeError("Nessun engine di pitch shift disponibile (rubberband e sox non trovati)")
+
+def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
+    rb_path  = _find_tool("rubberband")
+    sox_path = _find_tool("sox")
+    print(f"[convert] start  rubberband={rb_path}  sox={sox_path}  "
+          f"ffmpeg={_find_tool('ffmpeg')}  in={input_path}", flush=True)
+    if not rb_path and not sox_path:
+        return {"success": False, "error": "Nessun engine pitch shift trovato (rubberband / sox)"}
 
     tmp_in  = tempfile.mktemp(suffix=".wav")
     tmp_432 = tempfile.mktemp(suffix=".wav")
+    engine_used = "unknown"
     try:
-        sox_path = _sh.which("sox")
-        if not sox_path:
-            import subprocess as _sp_which
-            try:
-                _r = _sp_which.run(["which", "sox"], capture_output=True, text=True, timeout=5)
-                sox_path = _r.stdout.strip() or None
-            except Exception:
-                pass
-        if not sox_path and os.path.isfile("/usr/bin/sox"):
-            sox_path = "/usr/bin/sox"
-        print(f"[convert] start  sox={sox_path}  ffmpeg={_sh.which('ffmpeg') or '/usr/bin/ffmpeg'}  in={input_path}", flush=True)
-        if not sox_path:
-            return {"success": False, "error": "SoX non trovato sul server — assicurarsi che sox sia installato"}
         # channels=1 (mono): coerente con la post-analisi e con analyze_file(),
         # evita problemi con SoX pitch su stereo interleaved.
         _load_as_wav(input_path, tmp_in, channels=1, max_seconds=max_seconds)
@@ -313,21 +351,19 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
             return {"success": False, "error": f"Analisi pre fallita: {pre.get('error')}"}
         a4_original = pre["peak_freq"]
         if pre["is_432"]:
-            return {"success": True, "already_432": True, "pre_freq": a4_original, "pre_cents": pre["cents_vs_432"], "post_freq": a4_original, "post_cents": pre["cents_vs_432"], "shift_applied": 0.0, "certified": True, "message": "Il brano è già certificato a 432 Hz."}
+            return {"success": True, "already_432": True, "pre_freq": a4_original, "pre_cents": pre["cents_vs_432"], "post_freq": a4_original, "post_cents": pre["cents_vs_432"], "shift_applied": 0.0, "certified": True, "engine": "none", "message": "Il brano è già certificato a 432 Hz."}
         shift_cents = 1200.0 * math.log2(TARGET_HZ / a4_original)
 
-        print(f"[convert] sox_start  shift={shift_cents:.4f}cent", flush=True)
         try:
-            subprocess.run([sox_path, tmp_in, tmp_432, "pitch", f"{shift_cents:.4f}"],
-                           check=True, capture_output=True, timeout=sox_timeout)
+            engine_used = _pitch_shift(tmp_in, tmp_432, shift_cents, sox_timeout)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode(errors="replace")[:400] if e.stderr else "(nessun stderr)"
-            print(f"[convert] sox_ERROR  returncode={e.returncode}  stderr={stderr}", flush=True)
+            print(f"[convert] pitch_shift_ERROR  returncode={e.returncode}  stderr={stderr}", flush=True)
             raise
         tmp_432_size = os.path.getsize(tmp_432) if os.path.exists(tmp_432) else -1
-        print(f"[convert] sox_done  tmp_432_size={tmp_432_size}", flush=True)
+        print(f"[convert] pitch_shift_done  engine={engine_used}  tmp_432_size={tmp_432_size}", flush=True)
         if tmp_432_size <= 0:
-            return {"success": False, "error": "SoX ha prodotto un file vuoto"}
+            return {"success": False, "error": f"{engine_used} ha prodotto un file vuoto"}
 
         ext = os.path.splitext(output_path)[1].lower()
         print(f"[convert] ffmpeg_encode  ext={ext}  out={output_path}", flush=True)
@@ -373,12 +409,12 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
             try:
                 eff = (shift_cents + post_cents) / shift_cents
                 if abs(eff) < 0.05:
-                    raise ValueError(f"Efficienza SoX non plausibile: {eff:.4f}")
+                    raise ValueError(f"Efficienza pitch shift non plausibile: {eff:.4f}")
                 shift_compensated = shift_cents / eff
                 max_shift = abs(shift_cents) * 3.0
                 shift_compensated = max(-max_shift, min(max_shift, shift_compensated))
                 print(f"[convert] >>> second pass: eff={eff:.4f}  shift_compensated={shift_compensated:+.4f} cent", flush=True)
-                subprocess.run([sox_path, tmp_in, tmp_corr_out, "pitch", f"{shift_compensated:.4f}"], check=True, capture_output=True, timeout=sox_timeout)
+                engine_used = _pitch_shift(tmp_in, tmp_corr_out, shift_compensated, sox_timeout, engine_pref=engine_used)
                 if ext == ".mp3":
                     subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"], check=True, capture_output=True)
                 elif ext == ".m4a":
@@ -416,7 +452,8 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
                   "pre_verdict": pre["verdict"], "shift_applied": round(shift_cents,4),
                   "post_freq": post["peak_freq"], "post_cents_vs_432": round(post_cents,3),
                   "post_verdict": post["verdict"], "certified": certified,
-                  "correction_passes": correction_passes, "target_hz": TARGET_HZ, "message": message}
+                  "correction_passes": correction_passes, "target_hz": TARGET_HZ,
+                  "engine": engine_used, "message": message}
         if corr_pass_error:
             result["corr_pass_error"] = corr_pass_error
         return result
