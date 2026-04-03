@@ -304,20 +304,30 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubbe
     rb_path  = _find_tool("rubberband")
     sox_path = _find_tool("sox")
 
-    # rubberband: --pitch-scale accetta un fattore moltiplicativo
-    # fattore = 2^(cents/1200)  — es. -26.75 cent → 0.98469
-    pitch_scale = 2.0 ** (shift_cents / 1200.0)
+    # rubberband: --pitch accetta semitoni (cents / 100)
+    semitones = shift_cents / 100.0
 
     if rb_path and engine_pref == "rubberband":
-        print(f"[pitch_shift] rubberband  scale={pitch_scale:.6f}  cents={shift_cents:+.4f}", flush=True)
-        subprocess.run(
-            [rb_path, "--pitch-scale", f"{pitch_scale:.8f}", "--crisp", "6",
-             input_wav, output_wav],
-            check=True, capture_output=True, timeout=timeout)
-        return "rubberband"
+        print(f"[pitch_shift] rubberband  semitones={semitones:+.6f}  cents={shift_cents:+.4f}", flush=True)
+        try:
+            subprocess.run(
+                [rb_path, "--pitch", f"{semitones:.6f}", "--crisp", "6",
+                 input_wav, output_wav],
+                check=True, capture_output=True, timeout=timeout)
+            return "rubberband"
+        except (subprocess.CalledProcessError, Exception) as e:
+            stderr = ""
+            if hasattr(e, "stderr") and e.stderr:
+                stderr = e.stderr.decode(errors="replace")[:300]
+            print(f"[pitch_shift] rubberband FAILED (rc={getattr(e, 'returncode', '?')}): {stderr or e} — fallback a SoX", flush=True)
+            # Pulisci eventuale output parziale
+            if os.path.exists(output_wav):
+                os.remove(output_wav)
+            if not sox_path:
+                raise
 
     if sox_path:
-        print(f"[pitch_shift] sox_fallback  cents={shift_cents:+.4f}", flush=True)
+        print(f"[pitch_shift] sox  cents={shift_cents:+.4f}", flush=True)
         subprocess.run(
             [sox_path, input_wav, output_wav, "pitch", f"{shift_cents:.4f}"],
             check=True, capture_output=True, timeout=timeout)
