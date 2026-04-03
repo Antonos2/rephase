@@ -427,8 +427,9 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
             print(f"[convert] WARNING: shift_cents={shift_cents:+.4f} ma post_freq={post['peak_freq']:.4f} > pre_freq={a4_original:.4f} — "
                   "possibile bug SoX pitch direction o canali audio", flush=True)
 
-        # Corrective second pass: re-apply from original WAV with compensated shift.
-        if not certified and abs(post_cents) < 30.0:
+        # Corrective second pass: solo per SoX (impreciso).
+        # Rubber Band è preciso — il secondo passaggio peggiora il risultato.
+        if not certified and abs(post_cents) < 30.0 and engine_used == "sox":
             tmp_corr_out = tempfile.mktemp(suffix=".wav")
             try:
                 eff = (shift_cents + post_cents) / shift_cents
