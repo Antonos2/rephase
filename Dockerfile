@@ -5,6 +5,8 @@ RUN apt-get update -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+ENV PATH="/usr/bin:/usr/local/bin:$PATH"
+
 WORKDIR /app
 
 COPY requirements.txt .

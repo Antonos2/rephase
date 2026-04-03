@@ -287,9 +287,18 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
     tmp_432 = tempfile.mktemp(suffix=".wav")
     try:
         sox_path = _sh.which("sox")
-        print(f"[convert] start  sox={sox_path}  ffmpeg={_sh.which('ffmpeg')}  in={input_path}", flush=True)
         if not sox_path:
-            return {"success": False, "error": "SoX non trovato sul server — assicurarsi che sox sia installato (build.sh)"}
+            import subprocess as _sp_which
+            try:
+                _r = _sp_which.run(["which", "sox"], capture_output=True, text=True, timeout=5)
+                sox_path = _r.stdout.strip() or None
+            except Exception:
+                pass
+        if not sox_path and os.path.isfile("/usr/bin/sox"):
+            sox_path = "/usr/bin/sox"
+        print(f"[convert] start  sox={sox_path}  ffmpeg={_sh.which('ffmpeg') or '/usr/bin/ffmpeg'}  in={input_path}", flush=True)
+        if not sox_path:
+            return {"success": False, "error": "SoX non trovato sul server — assicurarsi che sox sia installato"}
         # channels=1 (mono): coerente con la post-analisi e con analyze_file(),
         # evita problemi con SoX pitch su stereo interleaved.
         _load_as_wav(input_path, tmp_in, channels=1, max_seconds=max_seconds)
@@ -309,7 +318,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
 
         print(f"[convert] sox_start  shift={shift_cents:.4f}cent", flush=True)
         try:
-            subprocess.run(["sox", tmp_in, tmp_432, "pitch", f"{shift_cents:.4f}"],
+            subprocess.run([sox_path, tmp_in, tmp_432, "pitch", f"{shift_cents:.4f}"],
                            check=True, capture_output=True, timeout=sox_timeout)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode(errors="replace")[:400] if e.stderr else "(nessun stderr)"
@@ -369,7 +378,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
                 max_shift = abs(shift_cents) * 3.0
                 shift_compensated = max(-max_shift, min(max_shift, shift_compensated))
                 print(f"[convert] >>> second pass: eff={eff:.4f}  shift_compensated={shift_compensated:+.4f} cent", flush=True)
-                subprocess.run(["sox", tmp_in, tmp_corr_out, "pitch", f"{shift_compensated:.4f}"], check=True, capture_output=True, timeout=sox_timeout)
+                subprocess.run([sox_path, tmp_in, tmp_corr_out, "pitch", f"{shift_compensated:.4f}"], check=True, capture_output=True, timeout=sox_timeout)
                 if ext == ".mp3":
                     subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"], check=True, capture_output=True)
                 elif ext == ".m4a":
