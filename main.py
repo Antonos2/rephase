@@ -168,60 +168,6 @@ def health():
         "ffmpeg_path":     ffmpeg_path,
     }
 
-@app.get("/debug/engines")
-def debug_engines():
-    """Diagnostica: versioni e test pitch shift di rubberband e sox."""
-    import subprocess as _sp, shutil
-    results = {}
-    for name in ["rubberband", "sox", "ffmpeg"]:
-        p = shutil.which(name)
-        if not p and os.path.isfile(f"/usr/bin/{name}"):
-            p = f"/usr/bin/{name}"
-        ver = ""
-        if p:
-            try:
-                r = _sp.run([p, "--version"], capture_output=True, text=True, timeout=5)
-                ver = (r.stdout.strip() + " " + r.stderr.strip()).strip()
-            except Exception as e:
-                ver = f"error: {e}"
-        results[name] = {"path": p, "version": ver}
-    # Test rubberband con un WAV sintetico minimo
-    rb_test = "skipped"
-    rb_path = results["rubberband"]["path"]
-    if rb_path:
-        import tempfile, struct, math as _m
-        tmp_in = tempfile.mktemp(suffix=".wav")
-        tmp_out = tempfile.mktemp(suffix=".wav")
-        try:
-            # Genera 0.5s di sine 440Hz, 16bit mono 44100Hz
-            sr, dur, freq = 44100, 0.5, 440.0
-            n = int(sr * dur)
-            samples = [int(32767 * _m.sin(2 * _m.pi * freq * i / sr)) for i in range(n)]
-            import wave
-            with wave.open(tmp_in, "w") as wf:
-                wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sr)
-                wf.writeframes(struct.pack(f"<{n}h", *samples))
-            # Test: -3 --no-transients --pitch -0.2675
-            r = _sp.run([rb_path, "-3", "--no-transients", "--pitch", "-0.267500",
-                         tmp_in, tmp_out], capture_output=True, text=True, timeout=10)
-            rb_test = {"rc": r.returncode, "stdout": r.stdout[:500], "stderr": r.stderr[:500],
-                       "output_exists": os.path.exists(tmp_out),
-                       "output_size": os.path.getsize(tmp_out) if os.path.exists(tmp_out) else 0}
-            # Se -3 fallisce, prova --fine
-            if r.returncode != 0:
-                if os.path.exists(tmp_out): os.remove(tmp_out)
-                r2 = _sp.run([rb_path, "--fine", "--pitch", "-0.267500",
-                              tmp_in, tmp_out], capture_output=True, text=True, timeout=10)
-                rb_test["fallback_fine"] = {"rc": r2.returncode, "stderr": r2.stderr[:500],
-                                            "output_exists": os.path.exists(tmp_out)}
-        except Exception as e:
-            rb_test = f"exception: {e}"
-        finally:
-            for f in [tmp_in, tmp_out]:
-                if os.path.exists(f): os.remove(f)
-    results["rb_pitch_test"] = rb_test
-    return results
-
 # ══════════════════════════════════════════════════════════════════════════════
 # ENDPOINT: /status — stato attuale del server (usato dal frontend pre-upload)
 # ══════════════════════════════════════════════════════════════════════════════

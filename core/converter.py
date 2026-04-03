@@ -319,7 +319,12 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubbe
         rb_ver = _rb_version(rb_path)
         # Prova prima con -3 (R3 engine, v4+), fallback a --fine (v3)
         # --no-transients preserva suoni sostenuti (pad, synth, archi)
-        r3_supported = rb_ver.startswith("4") or rb_ver.startswith("5")
+        # R3 engine supportato da rubberband 3.3+
+        try:
+            major, minor = [int(x) for x in rb_ver.split(".")[:2]]
+            r3_supported = (major > 3) or (major == 3 and minor >= 3)
+        except Exception:
+            r3_supported = False
         if r3_supported:
             rb_args = [rb_path, "-3", "--no-transients", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
             rb_mode = f"R3 --no-transients (v{rb_ver})"
