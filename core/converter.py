@@ -298,6 +298,14 @@ def _find_tool(name):
         return hardcoded
     return None
 
+def _rb_version(rb_path):
+    """Ritorna la versione di rubberband come stringa, o '?' se non leggibile."""
+    try:
+        r = subprocess.run([rb_path, "--version"], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() or r.stderr.strip() or "?"
+    except Exception:
+        return "?"
+
 def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubberband"):
     """Pitch shift via rubberband (primario) o SoX (fallback).
     Ritorna il nome dell'engine usato o solleva un'eccezione."""
@@ -308,19 +316,25 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubbe
     semitones = shift_cents / 100.0
 
     if rb_path and engine_pref == "rubberband":
-        print(f"[pitch_shift] rubberband  semitones={semitones:+.6f}  cents={shift_cents:+.4f}", flush=True)
+        rb_ver = _rb_version(rb_path)
+        # Prova prima con -3 (R3 engine, v4+), fallback a --fine (v3)
+        # --no-transients preserva suoni sostenuti (pad, synth, archi)
+        r3_supported = rb_ver.startswith("4") or rb_ver.startswith("5")
+        if r3_supported:
+            rb_args = [rb_path, "-3", "--no-transients", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
+            rb_mode = f"R3 --no-transients (v{rb_ver})"
+        else:
+            rb_args = [rb_path, "--fine", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
+            rb_mode = f"--fine (v{rb_ver})"
+        print(f"[pitch_shift] rubberband {rb_mode}  semitones={semitones:+.6f}  cents={shift_cents:+.4f}  cmd={' '.join(rb_args)}", flush=True)
         try:
-            subprocess.run(
-                [rb_path, "--pitch", f"{semitones:.6f}", "--crisp", "6",
-                 input_wav, output_wav],
-                check=True, capture_output=True, timeout=timeout)
+            subprocess.run(rb_args, check=True, capture_output=True, timeout=timeout)
             return "rubberband"
         except (subprocess.CalledProcessError, Exception) as e:
             stderr = ""
             if hasattr(e, "stderr") and e.stderr:
                 stderr = e.stderr.decode(errors="replace")[:300]
             print(f"[pitch_shift] rubberband FAILED (rc={getattr(e, 'returncode', '?')}): {stderr or e} — fallback a SoX", flush=True)
-            # Pulisci eventuale output parziale
             if os.path.exists(output_wav):
                 os.remove(output_wav)
             if not sox_path:
