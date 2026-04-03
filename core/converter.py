@@ -333,13 +333,21 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubbe
             rb_mode = f"--fine (v{rb_ver})"
         print(f"[pitch_shift] rubberband {rb_mode}  semitones={semitones:+.6f}  cents={shift_cents:+.4f}  cmd={' '.join(rb_args)}", flush=True)
         try:
-            subprocess.run(rb_args, check=True, capture_output=True, timeout=timeout)
+            result = subprocess.run(rb_args, capture_output=True, timeout=timeout)
+            rb_stdout = result.stdout.decode(errors="replace") if result.stdout else ""
+            rb_stderr = result.stderr.decode(errors="replace") if result.stderr else ""
+            print(f"[pitch_shift] rubberband rc={result.returncode}  stdout={rb_stdout[:500]}  stderr={rb_stderr[:1000]}", flush=True)
+            if result.returncode != 0:
+                raise subprocess.CalledProcessError(result.returncode, rb_args, result.stdout, result.stderr)
+            if not os.path.exists(output_wav) or os.path.getsize(output_wav) <= 44:
+                raise RuntimeError(f"rubberband output mancante o vuoto: exists={os.path.exists(output_wav)} size={os.path.getsize(output_wav) if os.path.exists(output_wav) else 0}")
+            print(f"[pitch_shift] rubberband OK  output_size={os.path.getsize(output_wav)}", flush=True)
             return "rubberband"
-        except (subprocess.CalledProcessError, Exception) as e:
+        except Exception as e:
             stderr = ""
             if hasattr(e, "stderr") and e.stderr:
-                stderr = e.stderr.decode(errors="replace")[:300]
-            print(f"[pitch_shift] rubberband FAILED (rc={getattr(e, 'returncode', '?')}): {stderr or e} — fallback a SoX", flush=True)
+                stderr = e.stderr.decode(errors="replace")[:1000]
+            print(f"[pitch_shift] rubberband FAILED  type={type(e).__name__}  rc={getattr(e, 'returncode', '?')}  stderr={stderr or str(e)}", flush=True)
             if os.path.exists(output_wav):
                 os.remove(output_wav)
             if not sox_path:

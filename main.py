@@ -168,6 +168,56 @@ def health():
         "ffmpeg_path":     ffmpeg_path,
     }
 
+@app.get("/debug/rb-test")
+def debug_rb_test():
+    """Test diretto rubberband con WAV sintetico — da rimuovere dopo debug."""
+    import subprocess as _sp, shutil, tempfile, struct, math as _m, wave
+    rb = shutil.which("rubberband") or ("/usr/bin/rubberband" if os.path.isfile("/usr/bin/rubberband") else None)
+    if not rb:
+        return {"error": "rubberband not found"}
+    # Versione
+    try:
+        vr = _sp.run([rb, "--version"], capture_output=True, text=True, timeout=5)
+        version = (vr.stdout.strip() + " " + vr.stderr.strip()).strip()
+    except Exception as e:
+        version = str(e)
+    # Genera WAV sintetico: 1s di 440Hz, mono 16bit 44100Hz
+    tmp_in = tempfile.mktemp(suffix=".wav")
+    tmp_out = tempfile.mktemp(suffix=".wav")
+    sr, dur, freq = 44100, 1.0, 440.0
+    n = int(sr * dur)
+    samples = [int(32767 * _m.sin(2 * _m.pi * freq * i / sr)) for i in range(n)]
+    with wave.open(tmp_in, "w") as wf:
+        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sr)
+        wf.writeframes(struct.pack(f"<{n}h", *samples))
+    in_size = os.path.getsize(tmp_in)
+    # Test 1: -3 --no-transients --pitch
+    cmd1 = [rb, "-3", "--no-transients", "--pitch", "-0.267500", tmp_in, tmp_out]
+    r1 = _sp.run(cmd1, capture_output=True, text=True, timeout=30)
+    t1 = {"cmd": " ".join(cmd1), "rc": r1.returncode,
+           "stdout": r1.stdout[:800], "stderr": r1.stderr[:800],
+           "out_exists": os.path.exists(tmp_out),
+           "out_size": os.path.getsize(tmp_out) if os.path.exists(tmp_out) else 0}
+    if os.path.exists(tmp_out): os.remove(tmp_out)
+    # Test 2: --fine --pitch (fallback)
+    cmd2 = [rb, "--fine", "--pitch", "-0.267500", tmp_in, tmp_out]
+    r2 = _sp.run(cmd2, capture_output=True, text=True, timeout=30)
+    t2 = {"cmd": " ".join(cmd2), "rc": r2.returncode,
+           "stdout": r2.stdout[:800], "stderr": r2.stderr[:800],
+           "out_exists": os.path.exists(tmp_out),
+           "out_size": os.path.getsize(tmp_out) if os.path.exists(tmp_out) else 0}
+    # Test 3: semplice --pitch senza flags extra
+    if os.path.exists(tmp_out): os.remove(tmp_out)
+    cmd3 = [rb, "--pitch", "-0.267500", tmp_in, tmp_out]
+    r3 = _sp.run(cmd3, capture_output=True, text=True, timeout=30)
+    t3 = {"cmd": " ".join(cmd3), "rc": r3.returncode,
+           "stdout": r3.stdout[:800], "stderr": r3.stderr[:800],
+           "out_exists": os.path.exists(tmp_out),
+           "out_size": os.path.getsize(tmp_out) if os.path.exists(tmp_out) else 0}
+    for f in [tmp_in, tmp_out]:
+        if os.path.exists(f): os.remove(f)
+    return {"version": version, "input_size": in_size, "test_r3": t1, "test_fine": t2, "test_plain": t3}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ENDPOINT: /status — stato attuale del server (usato dal frontend pre-upload)
 # ══════════════════════════════════════════════════════════════════════════════
