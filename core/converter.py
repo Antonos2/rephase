@@ -431,10 +431,10 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
         ext = os.path.splitext(output_path)[1].lower()
         print(f"[convert] ffmpeg_encode  ext={ext}  out={output_path}", flush=True)
         if ext == ".mp3":
-            subprocess.run(["ffmpeg","-y","-i",tmp_432,"-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"],
+            subprocess.run(["ffmpeg","-y","-i",tmp_432,"-ac","2","-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"],
                            check=True, capture_output=True)
         elif ext == ".m4a":
-            subprocess.run(["ffmpeg","-y","-i",tmp_432,"-c:a","aac","-b:a","256k","-movflags","+faststart","-f","mp4",output_path,"-loglevel","error"],
+            subprocess.run(["ffmpeg","-y","-i",tmp_432,"-ac","2","-c:a","aac","-b:a","256k","-movflags","+faststart","-f","mp4",output_path,"-loglevel","error"],
                            check=True, capture_output=True)
         else:
             return {"success": False, "error": f"Formato non supportato: {ext}"}
@@ -480,9 +480,9 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
                 print(f"[convert] >>> second pass: eff={eff:.4f}  shift_compensated={shift_compensated:+.4f} cent", flush=True)
                 engine_used = _pitch_shift(tmp_in, tmp_corr_out, shift_compensated, sox_timeout, engine_pref=engine_used)
                 if ext == ".mp3":
-                    subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"], check=True, capture_output=True)
+                    subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-ac","2","-c:a","libmp3lame","-qscale:a","2",output_path,"-loglevel","error"], check=True, capture_output=True)
                 elif ext == ".m4a":
-                    subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","aac","-b:a","256k","-movflags","+faststart","-f","mp4",output_path,"-loglevel","error"], check=True, capture_output=True)
+                    subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-ac","2","-c:a","aac","-b:a","256k","-movflags","+faststart","-f","mp4",output_path,"-loglevel","error"], check=True, capture_output=True)
                 tmp_post2 = tempfile.mktemp(suffix=".wav")
                 try:
                     _load_as_wav(output_path, tmp_post2, channels=1)
