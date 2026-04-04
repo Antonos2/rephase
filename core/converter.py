@@ -402,7 +402,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
     tmp_432 = tempfile.mktemp(suffix=".wav")
     engine_used = "unknown"
     try:
-        _load_as_wav(input_path, tmp_in, channels=1, max_seconds=max_seconds)
+        _load_as_wav(input_path, tmp_in, channels=2, max_seconds=max_seconds)
         tmp_in_size = os.path.getsize(tmp_in) if os.path.exists(tmp_in) else -1
         print(f"[convert] decode_done  tmp_in_size={tmp_in_size}", flush=True)
         if tmp_in_size <= 0:
