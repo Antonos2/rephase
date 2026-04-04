@@ -329,7 +329,7 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubbe
         except Exception:
             r3_supported = False
         if r3_supported:
-            rb_args = [rb_path, "-3", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
+            rb_args = [rb_path, "-3", "--ignore-clipping", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
             rb_mode = f"R3 (v{rb_ver})"
         else:
             rb_args = [rb_path, "--fine", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
