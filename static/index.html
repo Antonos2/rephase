@@ -255,8 +255,8 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     </div>
     <div class="tab-content active" id="tab-verify">
       <div class="analysis-mode-toggle">
-        <button class="mode-btn active" id="mode-btn-quick" onclick="setAnalysisMode('quick')">Analisi rapida</button>
-        <button class="mode-btn" id="mode-btn-full" onclick="setAnalysisMode('full')">Analisi completa (intero brano)</button>
+        <button class="mode-btn active" id="mode-btn-quick" onclick="setAnalysisMode('quick')" title="Campioni rappresentativi distribuiti nel brano">Analisi veloce</button>
+        <button class="mode-btn" id="mode-btn-full" onclick="setAnalysisMode('full')" title="Ogni secondo del brano viene analizzato">Analisi precisa</button>
       </div>
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
       <div class="drop-area" id="drop-area-verify" onclick="document.getElementById('file-verify').click()">
