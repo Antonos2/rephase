@@ -306,10 +306,10 @@ def _rb_version(rb_path):
     except Exception:
         return "?"
 
-def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="ffmpeg-rubberband"):
+def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubberband"):
     """Pitch shift con 3 engine in ordine di priorità:
-    1. ffmpeg con filtro rubberband (librubberband interna)
-    2. rubberband standalone (R3)
+    1. rubberband standalone (R3)
+    2. ffmpeg con filtro rubberband (librubberband interna)
     3. sox (fallback finale)
     Ritorna il nome dell'engine usato o solleva un'eccezione."""
     import time as _t
@@ -320,32 +320,8 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="ffmpe
     semitones   = shift_cents / 100.0
     pitch_scale = 2.0 ** (shift_cents / 1200.0)
 
-    # ── 1. ffmpeg con filtro rubberband (librubberband) ───────────────────────
-    if ffmpeg_path and engine_pref in ("ffmpeg-rubberband", "rubberband"):
-        af_filter = f"rubberband=pitch={pitch_scale:.8f}:pitchq=quality"
-        ff_args = [ffmpeg_path, "-y", "-i", input_wav, "-af", af_filter, output_wav, "-loglevel", "error"]
-        print(f"[pitch_shift] 1/3 ffmpeg-rubberband  scale={pitch_scale:.8f}  cents={shift_cents:+.4f}  cmd={' '.join(ff_args)}", flush=True)
-        t0 = _t.monotonic()
-        try:
-            result = subprocess.run(ff_args, capture_output=True, timeout=timeout)
-            elapsed = _t.monotonic() - t0
-            ff_stderr = result.stderr.decode(errors="replace")[:1000] if result.stderr else ""
-            print(f"[pitch_shift] ffmpeg-rubberband rc={result.returncode}  time={elapsed:.2f}s  stderr={ff_stderr}", flush=True)
-            if result.returncode != 0:
-                raise subprocess.CalledProcessError(result.returncode, ff_args, result.stdout, result.stderr)
-            if not os.path.exists(output_wav) or os.path.getsize(output_wav) <= 44:
-                raise RuntimeError(f"output mancante/vuoto size={os.path.getsize(output_wav) if os.path.exists(output_wav) else 0}")
-            print(f"[pitch_shift] WINNER: ffmpeg-rubberband  time={elapsed:.2f}s  output_size={os.path.getsize(output_wav)}", flush=True)
-            return "ffmpeg-rubberband"
-        except Exception as e:
-            elapsed = _t.monotonic() - t0
-            stderr = e.stderr.decode(errors="replace")[:1000] if hasattr(e, "stderr") and e.stderr else str(e)
-            print(f"[pitch_shift] ffmpeg-rubberband FAILED  time={elapsed:.2f}s  {type(e).__name__}: {stderr}", flush=True)
-            if os.path.exists(output_wav):
-                os.remove(output_wav)
-
-    # ── 2. Rubberband standalone ──────────────────────────────────────────────
-    if rb_path:
+    # ── 1. Rubberband standalone ──────────────────────────────────────────────
+    if rb_path and engine_pref in ("rubberband", "ffmpeg-rubberband"):
         rb_ver = _rb_version(rb_path)
         try:
             major, minor = [int(x) for x in rb_ver.split(".")[:2]]
@@ -358,7 +334,7 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="ffmpe
         else:
             rb_args = [rb_path, "--fine", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
             rb_mode = f"--fine (v{rb_ver})"
-        print(f"[pitch_shift] 2/3 rubberband {rb_mode}  semitones={semitones:+.6f}  cents={shift_cents:+.4f}  cmd={' '.join(rb_args)}", flush=True)
+        print(f"[pitch_shift] 1/3 rubberband {rb_mode}  semitones={semitones:+.6f}  cents={shift_cents:+.4f}  cmd={' '.join(rb_args)}", flush=True)
         t0 = _t.monotonic()
         try:
             result = subprocess.run(rb_args, capture_output=True, timeout=timeout)
@@ -375,6 +351,30 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="ffmpe
             elapsed = _t.monotonic() - t0
             stderr = e.stderr.decode(errors="replace")[:1000] if hasattr(e, "stderr") and e.stderr else str(e)
             print(f"[pitch_shift] rubberband FAILED  time={elapsed:.2f}s  {type(e).__name__}: {stderr}", flush=True)
+            if os.path.exists(output_wav):
+                os.remove(output_wav)
+
+    # ── 2. ffmpeg con filtro rubberband (librubberband) ───────────────────────
+    if ffmpeg_path:
+        af_filter = f"rubberband=pitch={pitch_scale:.8f}:pitchq=quality"
+        ff_args = [ffmpeg_path, "-y", "-i", input_wav, "-af", af_filter, output_wav, "-loglevel", "error"]
+        print(f"[pitch_shift] 2/3 ffmpeg-rubberband  scale={pitch_scale:.8f}  cents={shift_cents:+.4f}  cmd={' '.join(ff_args)}", flush=True)
+        t0 = _t.monotonic()
+        try:
+            result = subprocess.run(ff_args, capture_output=True, timeout=timeout)
+            elapsed = _t.monotonic() - t0
+            ff_stderr = result.stderr.decode(errors="replace")[:1000] if result.stderr else ""
+            print(f"[pitch_shift] ffmpeg-rubberband rc={result.returncode}  time={elapsed:.2f}s  stderr={ff_stderr}", flush=True)
+            if result.returncode != 0:
+                raise subprocess.CalledProcessError(result.returncode, ff_args, result.stdout, result.stderr)
+            if not os.path.exists(output_wav) or os.path.getsize(output_wav) <= 44:
+                raise RuntimeError(f"output mancante/vuoto size={os.path.getsize(output_wav) if os.path.exists(output_wav) else 0}")
+            print(f"[pitch_shift] WINNER: ffmpeg-rubberband  time={elapsed:.2f}s  output_size={os.path.getsize(output_wav)}", flush=True)
+            return "ffmpeg-rubberband"
+        except Exception as e:
+            elapsed = _t.monotonic() - t0
+            stderr = e.stderr.decode(errors="replace")[:1000] if hasattr(e, "stderr") and e.stderr else str(e)
+            print(f"[pitch_shift] ffmpeg-rubberband FAILED  time={elapsed:.2f}s  {type(e).__name__}: {stderr}", flush=True)
             if os.path.exists(output_wav):
                 os.remove(output_wav)
 
