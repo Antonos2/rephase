@@ -511,6 +511,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 const API="";
 let fmt="mp3",convTimer=null,convPct=0;
 let _pendingVerifyFile = null;
+let _lastVerifyJobId = null;
 let fftChart = null, fftChartConv = null, fftChartZoom = null, fftChartZoomVerify = null;
 let convertOrigFile = null, convertBlob = null, convertHeaders = null;
 let _isPlanProAnnual = false;
@@ -1826,6 +1827,7 @@ document.getElementById('file-verify').addEventListener('change', async function
       return;
     }
     const { job_id } = JSON.parse(xhr.responseText);
+    _lastVerifyJobId = job_id;
     uploadLabel.textContent = 'Caricamento completato \u2014 avvio analisi...';
     st.textContent = 'Avvio analisi FFT...';
     // Poll immediately, then every 2 s
@@ -1841,6 +1843,123 @@ document.getElementById('file-verify').addEventListener('change', async function
   xhr.send(fd);
 });
 
+async function _startConvertFromVerify(file, verifyJobId) {
+  _hidePricing();
+  const st         = document.getElementById('status-convert');
+  const uploadWrap = document.getElementById('upload-progress-wrap-conv');
+  const uploadFill = document.getElementById('upload-progress-fill-conv');
+  const uploadLabel= document.getElementById('upload-pct-text-conv');
+
+  uploadFill.style.width = '0%';
+  uploadWrap.style.display = 'block';
+  uploadLabel.textContent = 'Avvio conversione (file già sul server)...';
+  st.textContent = 'Avvio conversione...';
+  st.className = 'status visible processing';
+
+  const _convHashPromise = file.arrayBuffer().then(buf => _sha256hex(buf));
+  const _convTimestamp   = _zurichDisplayLine();
+
+  let _procTimer = null, _procPct = 0;
+  const _startProcAnim = () => {
+    _procPct = 0; uploadFill.style.width = '0%';
+    uploadLabel.textContent = 'Conversione in corso... 0%';
+    _procTimer = setInterval(() => {
+      if (_procPct < 90) _procPct = Math.min(90, _procPct + 3);
+      uploadFill.style.width = _procPct.toFixed(0) + '%';
+      uploadLabel.textContent = 'Conversione in corso... ' + _procPct.toFixed(0) + '%';
+    }, 1000);
+  };
+  const _stopProcAnim = () => {
+    if (_procTimer) { clearInterval(_procTimer); _procTimer = null; }
+    uploadFill.style.width = '100%';
+    uploadLabel.textContent = 'Conversione completata 100%';
+  };
+
+  try {
+    const res = await fetch(API + '/convert-from-verify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ verify_job_id: verifyJobId, format: fmt })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Errore ' + res.status);
+    }
+    const { job_id } = await res.json();
+    _startProcAnim();
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const r = await fetch(API + '/convert/status/' + job_id);
+        if (!r.ok) { clearInterval(pollInterval); throw new Error('Errore polling ' + r.status); }
+        const job = await r.json();
+
+        if (job.status === 'analyzing') {
+          uploadLabel.textContent = 'Analisi frequenza in corso...';
+        } else if (job.status === 'converting') {
+          uploadLabel.textContent = 'Conversione pitch in corso...';
+        } else if (job.status === 'done') {
+          clearInterval(pollInterval);
+          _stopProcAnim();
+          uploadWrap.style.display = 'none';
+
+          if (job.already_432) {
+            st.textContent = ''; st.className = 'status';
+            const cSign = (job.cents_vs_432 || 0) >= 0 ? '+' : '';
+            document.getElementById('cv-already-text').textContent = 'Questo brano \u00e8 gi\u00e0 a 432 Hz \u2713';
+            document.getElementById('cv-already-detail').textContent =
+              'Frequenza rilevata: ' + (job.peak_freq || 0).toFixed(1) + ' Hz  \u00b7  Scostamento: ' +
+              cSign + (job.cents_vs_432 || 0).toFixed(1) + ' cent  \u00b7  Nessuna conversione necessaria';
+            document.getElementById('result-already432').classList.remove('hidden');
+            _showPricing(); return;
+          }
+
+          const preFreq = job.pre_freq || 0, shiftCent = job.shift_applied || 0;
+          const postFreq = job.post_freq || 0, postCents = job.post_cents_vs_432 || 0;
+          document.getElementById('cv-detail').textContent =
+            'Prima: ' + preFreq.toFixed(1) + ' Hz  \u00b7  Shift: ' + (shiftCent >= 0 ? '+' : '') + shiftCent.toFixed(1) + ' cent' +
+            '\nDopo: ' + postFreq.toFixed(1) + ' Hz  \u00b7  Da 432 Hz: ' + (postCents >= 0 ? '+' : '') + postCents.toFixed(1) + ' cent';
+
+          const dlRes = await fetch(API + '/convert/download/' + job_id);
+          if (!dlRes.ok) throw new Error('Download fallito: ' + dlRes.status);
+          const blob = await dlRes.blob();
+          const fileHash = await _convHashPromise;
+
+          convertOrigFile = file; convertBlob = blob;
+          convertHeaders = {
+            preFreq, shiftCent, postFreq, postCents,
+            certified: job.certified || false, passes: job.correction_passes || 1,
+            corrErr: job.corr_pass_error || null, filename: file.name,
+            sha256Short: fileHash.slice(0, 8) + '\u2026', displayTime: _convTimestamp,
+          };
+          const url = URL.createObjectURL(blob);
+          const stem = file.name.replace(/\.[^.]+$/, '');
+          document.getElementById('download-link').href = url;
+          document.getElementById('download-link').download = stem + '_432.' + fmt;
+          document.getElementById('btn-spectral-conv').classList.remove('hidden');
+          document.getElementById('result-convert').classList.remove('hidden');
+          _showPricing(); st.className = 'status';
+
+        } else if (job.status === 'error') {
+          clearInterval(pollInterval); _stopProcAnim();
+          uploadWrap.style.display = 'none';
+          st.textContent = 'Errore: ' + (job.error || 'Errore sconosciuto');
+          st.className = 'status visible'; _showPricing();
+        }
+      } catch(e) {
+        clearInterval(pollInterval); _stopProcAnim();
+        uploadWrap.style.display = 'none';
+        st.textContent = 'Errore: ' + e.message;
+        st.className = 'status visible'; _showPricing();
+      }
+    }, 2000);
+  } catch(e) {
+    _stopProcAnim(); uploadWrap.style.display = 'none';
+    st.textContent = 'Errore: ' + e.message;
+    st.className = 'status visible'; _showPricing();
+  }
+}
+
 function startConvertWithFile(file){
   document.getElementById("convert-label").textContent = file.name;
   document.getElementById("cv-detail").textContent = "";
@@ -1851,6 +1970,15 @@ function startConvertWithFile(file){
   document.getElementById("sox-sub").style.display = "none";
   document.getElementById("sox-sub").textContent = "";
   convertOrigFile = null; convertBlob = null; convertHeaders = null;
+
+  // Se abbiamo il job_id della verifica, riusa il file già sul server (no re-upload)
+  if (_lastVerifyJobId) {
+    _startConvertFromVerify(file, _lastVerifyJobId);
+    _lastVerifyJobId = null;
+    return;
+  }
+
+  // Fallback: upload normale
   const dt = new DataTransfer();
   dt.items.add(file);
   const inp = document.getElementById("file-convert");

@@ -152,7 +152,7 @@ def _load_job(job_id):
     with open(p) as f:
         return _json.load(f)
 
-def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_sec, sox_timeout):
+def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_sec, sox_timeout, cleanup_input=True):
     """Eseguita in background thread — aggiorna il job file."""
     try:
         _save_job(job_id, {"status": "analyzing", "progress": 10})
@@ -163,7 +163,7 @@ def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_se
                 "peak_freq": pre_check["peak_freq"],
                 "cents_vs_432": pre_check["cents_vs_432"],
             })
-            if os.path.exists(tmp_in): os.remove(tmp_in)
+            if cleanup_input and os.path.exists(tmp_in): os.remove(tmp_in)
             return
 
         _save_job(job_id, {"status": "converting", "progress": 30})
@@ -194,7 +194,7 @@ def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_se
         print(f"[convert/job] {job_id} FATAL:\n{traceback.format_exc()}", flush=True)
         _save_job(job_id, {"status": "error", "error": str(e)})
     finally:
-        if os.path.exists(tmp_in):
+        if cleanup_input and os.path.exists(tmp_in):
             try: os.remove(tmp_in)
             except Exception: pass
 
@@ -439,6 +439,49 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
 
 # ── Conversione asincrona (job-based) ─────────────────────────────────────────
 
+@app.post("/convert-from-verify")
+async def convert_from_verify(request: Request):
+    """Avvia conversione riusando il file già caricato durante la verifica."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Body JSON non valido"}, status_code=400)
+
+    verify_job_id = body.get("verify_job_id", "")
+    format = body.get("format", "mp3")
+    if format not in ("mp3", "m4a"):
+        format = "mp3"
+
+    # Recupera il file dalla verifica
+    with _jobs_lock:
+        verify_job = _jobs.get(verify_job_id)
+    if not verify_job:
+        return JSONResponse({"error": "Job di verifica non trovato"}, status_code=404)
+
+    tmp_in = verify_job.get("_tmp_path", "")
+    if not tmp_in or not os.path.exists(tmp_in):
+        return JSONResponse({"error": "File di verifica non più disponibile — ricarica il file"}, status_code=410)
+
+    from core.converter import _get_duration
+    duration_sec = _get_duration(tmp_in) or 0.0
+    sox_timeout = max(120, int(duration_sec * 3))
+    file_mb = os.path.getsize(tmp_in) / 1_000_000
+
+    job_id = str(uuid.uuid4())
+    ext = Path(tmp_in).suffix.lower()
+    tmp_out = str(TEMP_DIR / f"{job_id}_432.{format}")
+    filename = verify_job.get("_formato", "audio") + ext
+
+    _save_job(job_id, {"status": "uploading", "progress": 0})
+    print(f"[convert/from-verify] job={job_id}  verify_job={verify_job_id}  size={file_mb:.1f}MB  duration={duration_sec:.1f}s", flush=True)
+
+    t = threading.Thread(target=_run_conversion,
+                         args=(job_id, tmp_in, tmp_out, format, filename, file_mb, duration_sec, sox_timeout, False),
+                         daemon=True)
+    t.start()
+
+    return JSONResponse({"job_id": job_id})
+
 @app.post("/convert")
 async def convert_start(request: Request, file: UploadFile = File(...), format: str = "mp3"):
     ext = Path(file.filename).suffix.lower()
@@ -633,8 +676,15 @@ async def analyze_start(request: Request, file: UploadFile = File(...), full_ana
                 _jobs[job_id]["status"] = "error"
                 _jobs[job_id]["error"]  = str(e)
         finally:
-            for p in [tmp_wav, tmp]:
-                if _os.path.exists(p): _os.remove(p)
+            if _os.path.exists(tmp_wav): _os.remove(tmp_wav)
+            # Conserva il file originale (tmp) per eventuale conversione successiva.
+            # Verrà cancellato dopo 5 minuti se non usato.
+            def _delayed_cleanup():
+                import time; time.sleep(300)
+                if _os.path.exists(tmp): _os.remove(tmp)
+            threading.Thread(target=_delayed_cleanup, daemon=True).start()
+            with _jobs_lock:
+                _jobs[job_id]["_tmp_path"] = tmp
             with _jobs_lock:
                 if _jobs[job_id]["status"] == "running":
                     _jobs[job_id]["status"] = "error"
