@@ -503,6 +503,29 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     </div>
   </div>
 </div>
+
+<!-- Modal OTP Login -->
+<div id="auth-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:28px;max-width:380px;width:92%;box-shadow:0 8px 40px rgba(0,0,0,.25);">
+    <div style="font-size:18px;font-weight:700;margin-bottom:4px;">re<span style="color:#1e8c3a;">phase</span></div>
+    <div id="auth-step-email">
+      <p style="font-size:14px;color:#333;margin:12px 0 16px;">Inserisci la tua email per registrarti o accedere.</p>
+      <input type="email" id="auth-email" placeholder="nome@esempio.com" style="width:100%;padding:12px;border:1.5px solid #ccc;border-radius:10px;font-size:15px;outline:none;">
+      <div id="auth-email-err" style="color:#ff3b30;font-size:12px;margin-top:6px;display:none;"></div>
+      <button id="auth-send-btn" onclick="authSendOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Invia codice</button>
+    </div>
+    <div id="auth-step-otp" style="display:none;">
+      <p style="font-size:14px;color:#333;margin:12px 0 8px;">Inserisci il codice a 6 cifre inviato a:</p>
+      <p id="auth-otp-email" style="font-size:13px;color:#1e8c3a;font-weight:600;margin-bottom:14px;"></p>
+      <input type="text" id="auth-otp" placeholder="000000" maxlength="6" inputmode="numeric" style="width:100%;padding:14px;border:1.5px solid #ccc;border-radius:10px;font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;">
+      <div id="auth-otp-err" style="color:#ff3b30;font-size:12px;margin-top:6px;display:none;"></div>
+      <button id="auth-verify-btn" onclick="authVerifyOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Verifica</button>
+      <button onclick="document.getElementById('auth-step-otp').style.display='none';document.getElementById('auth-step-email').style.display='block';" style="width:100%;margin-top:8px;padding:10px;background:none;border:1px solid #ccc;border-radius:10px;font-size:13px;color:#666;cursor:pointer;">Cambia email</button>
+    </div>
+    <button onclick="closeAuthModal()" style="width:100%;margin-top:12px;padding:8px;background:none;border:none;font-size:13px;color:#999;cursor:pointer;">Chiudi</button>
+  </div>
+</div>
+
 <footer>
   <div class="footer-logo">re<span>phase</span></div>
   <div class="footer-text">Out of phase? Get <span style="font-weight:700;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span><br>Server in Svizzera. File cancellati entro 60 secondi.<br>© 2026 Rephase. Tutti i diritti riservati.</div>
@@ -1080,8 +1103,69 @@ function renderSpectralConvert(origData, convData, h) {
     }
   );
 }
-function startFreeSignup(){
-  alert('Registrazione in arrivo \u2014 stiamo preparando il piano Free. Resta sintonizzato!');
+function startFreeSignup(){ openAuthModal(); }
+
+function openAuthModal() {
+  const m = document.getElementById('auth-modal');
+  m.style.display = 'flex';
+  document.getElementById('auth-step-email').style.display = 'block';
+  document.getElementById('auth-step-otp').style.display = 'none';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-otp').value = '';
+  document.getElementById('auth-email-err').style.display = 'none';
+  document.getElementById('auth-otp-err').style.display = 'none';
+}
+function closeAuthModal() { document.getElementById('auth-modal').style.display = 'none'; }
+
+async function authSendOtp() {
+  const email = document.getElementById('auth-email').value.trim();
+  const errEl = document.getElementById('auth-email-err');
+  const btn   = document.getElementById('auth-send-btn');
+  errEl.style.display = 'none';
+  if (!email) { errEl.textContent = 'Inserisci un indirizzo email'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Invio...';
+  try {
+    const res = await fetch(API + '/auth/send-otp', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json();
+    if (!data.success) { errEl.textContent = data.error; errEl.style.display = 'block'; return; }
+    document.getElementById('auth-step-email').style.display = 'none';
+    document.getElementById('auth-step-otp').style.display = 'block';
+    document.getElementById('auth-otp-email').textContent = email;
+    document.getElementById('auth-otp').focus();
+  } catch(e) {
+    errEl.textContent = 'Errore di connessione'; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Invia codice';
+  }
+}
+
+async function authVerifyOtp() {
+  const email = document.getElementById('auth-otp-email').textContent;
+  const code  = document.getElementById('auth-otp').value.trim();
+  const errEl = document.getElementById('auth-otp-err');
+  const btn   = document.getElementById('auth-verify-btn');
+  errEl.style.display = 'none';
+  if (!code || code.length < 6) { errEl.textContent = 'Inserisci il codice a 6 cifre'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = 'Verifica...';
+  try {
+    const res = await fetch(API + '/auth/verify-otp', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email, code })
+    });
+    const data = await res.json();
+    if (!data.success) { errEl.textContent = data.error; errEl.style.display = 'block'; return; }
+    localStorage.setItem('rephase_session', data.session_token);
+    localStorage.setItem('rephase_email', data.email);
+    closeAuthModal();
+    alert('Benvenuto su Rephase, ' + data.email + '!');
+  } catch(e) {
+    errEl.textContent = 'Errore di connessione'; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Verifica';
+  }
 }
 async function startCheckoutLifetime(){
   try {

@@ -873,7 +873,7 @@ if __name__ == "__main__":
 
 # ── Stripe Checkout ────────────────────────────────────────────────────────
 
-# ── Validazione email (blocco temp mail) ──────────────────────────────────────
+# ── Auth OTP ──────────────────────────────────────────────────────────────────
 
 @app.post("/validate-email")
 async def validate_email_endpoint(request: Request):
@@ -886,6 +886,37 @@ async def validate_email_endpoint(request: Request):
     email = body.get("email", "")
     result = validate_email(email)
     status = 200 if result["valid"] else 400
+    return JSONResponse(result, status_code=status)
+
+@app.post("/auth/send-otp")
+async def send_otp_endpoint(request: Request):
+    """Invia codice OTP a 6 cifre via email (Resend)."""
+    from core.auth import generate_otp
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "Body JSON non valido"}, status_code=400)
+    email = body.get("email", "")
+    if not email:
+        return JSONResponse({"success": False, "error": "Email richiesta"}, status_code=400)
+    result = generate_otp(email)
+    status = 200 if result["success"] else 400
+    return JSONResponse(result, status_code=status)
+
+@app.post("/auth/verify-otp")
+async def verify_otp_endpoint(request: Request):
+    """Verifica codice OTP e crea sessione."""
+    from core.auth import verify_otp
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "Body JSON non valido"}, status_code=400)
+    email = body.get("email", "")
+    code  = body.get("code", "")
+    if not email or not code:
+        return JSONResponse({"success": False, "error": "Email e codice richiesti"}, status_code=400)
+    result = verify_otp(email, code)
+    status = 200 if result["success"] else 400
     return JSONResponse(result, status_code=status)
 
 # ── Stripe Checkout ───────────────────────────────────────────────────────────
