@@ -308,7 +308,7 @@ def _rb_version(rb_path):
 
 def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubberband"):
     """Pitch shift con 3 engine in ordine di qualità:
-    1. rubberband standalone (R3 --no-transients)
+    1. rubberband standalone (R3)
     2. ffmpeg con filtro rubberband (librubberband interna)
     3. sox (fallback finale)
     Ritorna il nome dell'engine usato o solleva un'eccezione."""
@@ -329,8 +329,8 @@ def _pitch_shift(input_wav, output_wav, shift_cents, timeout, engine_pref="rubbe
         except Exception:
             r3_supported = False
         if r3_supported:
-            rb_args = [rb_path, "-3", "--no-transients", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
-            rb_mode = f"R3 --no-transients (v{rb_ver})"
+            rb_args = [rb_path, "-3", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
+            rb_mode = f"R3 (v{rb_ver})"
         else:
             rb_args = [rb_path, "--fine", "--pitch", f"{semitones:.6f}", input_wav, output_wav]
             rb_mode = f"--fine (v{rb_ver})"
