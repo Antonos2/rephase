@@ -216,7 +216,7 @@ def _is_large_file(input_path):
     dur = _get_duration(input_path)
     return dur is not None and dur > LARGE_FILE_SECS
 
-def _load_as_wav_sampled(input_path, tmp_wav, channels=2,
+def _load_as_wav_sampled(input_path, tmp_wav, channels=1,
                           n_samples=N_SAMPLES, sample_dur=SAMPLE_DUR):
     """Extract n_samples × sample_dur seconds distributed across the full file
     (stratified random sampling), concatenate raw PCM and write as a single WAV.
@@ -253,7 +253,7 @@ def _load_as_wav_sampled(input_path, tmp_wav, channels=2,
         wf.setframerate(SR_ANALYSIS)
         wf.writeframes(bytes(all_pcm))
 
-def _load_as_wav(input_path, tmp_wav, channels=2, max_seconds=None):
+def _load_as_wav(input_path, tmp_wav, channels=1, max_seconds=None):
     cmd = ["ffmpeg", "-y", "-i", input_path]
     if max_seconds is not None:
         cmd += ["-t", str(max_seconds)]
@@ -268,7 +268,7 @@ def _read_wav_samples(wav_path):
 def analyze_file(input_path):
     tmp_wav = tempfile.mktemp(suffix=".wav")
     try:
-        _load_as_wav(input_path, tmp_wav, channels=2)
+        _load_as_wav(input_path, tmp_wav, channels=1)
         samples, sr = _read_wav_samples(tmp_wav)
         result = _measure_a4(samples, sr)
         result["filename"] = os.path.basename(input_path)
@@ -402,7 +402,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
     tmp_432 = tempfile.mktemp(suffix=".wav")
     engine_used = "unknown"
     try:
-        _load_as_wav(input_path, tmp_in, channels=2, max_seconds=max_seconds)
+        _load_as_wav(input_path, tmp_in, channels=1, max_seconds=max_seconds)
         tmp_in_size = os.path.getsize(tmp_in) if os.path.exists(tmp_in) else -1
         print(f"[convert] decode_done  tmp_in_size={tmp_in_size}", flush=True)
         if tmp_in_size <= 0:
@@ -445,7 +445,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
 
         tmp_post = tempfile.mktemp(suffix=".wav")
         try:
-            _load_as_wav(output_path, tmp_post, channels=2)
+            _load_as_wav(output_path, tmp_post, channels=1)
             samples_post, sr_post = _read_wav_samples(tmp_post)
             post = _measure_a4(samples_post, sr_post)
         finally:
@@ -485,7 +485,7 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
                     subprocess.run(["ffmpeg","-y","-i",tmp_corr_out,"-c:a","aac","-b:a","256k","-movflags","+faststart","-f","mp4",output_path,"-loglevel","error"], check=True, capture_output=True)
                 tmp_post2 = tempfile.mktemp(suffix=".wav")
                 try:
-                    _load_as_wav(output_path, tmp_post2, channels=2)
+                    _load_as_wav(output_path, tmp_post2, channels=1)
                     samples2, sr2 = _read_wav_samples(tmp_post2)
                     post2 = _measure_a4(samples2, sr2)
                 finally:
