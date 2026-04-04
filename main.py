@@ -133,6 +133,71 @@ def cleanup(path):
     import time; time.sleep(60)
     if os.path.exists(path): os.remove(path)
 
+# ── Job system per conversione asincrona ──────────────────────────────────────
+import json as _json
+JOBS_DIR = TEMP_DIR / "jobs"
+JOBS_DIR.mkdir(exist_ok=True)
+
+def _job_path(job_id):
+    return JOBS_DIR / f"{job_id}.json"
+
+def _save_job(job_id, data):
+    with open(_job_path(job_id), "w") as f:
+        _json.dump(data, f)
+
+def _load_job(job_id):
+    p = _job_path(job_id)
+    if not p.exists():
+        return None
+    with open(p) as f:
+        return _json.load(f)
+
+def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_sec, sox_timeout):
+    """Eseguita in background thread — aggiorna il job file."""
+    try:
+        _save_job(job_id, {"status": "analyzing", "progress": 10})
+        pre_check = analyze_file(tmp_in)
+        if pre_check.get("is_432"):
+            _save_job(job_id, {
+                "status": "done", "already_432": True,
+                "peak_freq": pre_check["peak_freq"],
+                "cents_vs_432": pre_check["cents_vs_432"],
+            })
+            if os.path.exists(tmp_in): os.remove(tmp_in)
+            return
+
+        _save_job(job_id, {"status": "converting", "progress": 30})
+        result = convert_to_432(tmp_in, tmp_out, max_seconds=360, sox_timeout=sox_timeout)
+
+        if not result["success"]:
+            _save_job(job_id, {"status": "error", "error": result.get("error", "Errore sconosciuto")})
+            return
+
+        _save_job(job_id, {
+            "status": "done",
+            "already_432": False,
+            "filename": filename,
+            "format": fmt,
+            "output_path": tmp_out,
+            "pre_freq": round(result.get("pre_freq", 0), 4),
+            "shift_applied": round(result.get("shift_applied", 0), 4),
+            "post_freq": round(result.get("post_freq", 0), 4),
+            "post_cents_vs_432": round(result.get("post_cents_vs_432", 0), 4),
+            "certified": result.get("certified", False),
+            "correction_passes": result.get("correction_passes", 1),
+            "engine": result.get("engine", "unknown"),
+            "corr_pass_error": result.get("corr_pass_error"),
+            "audio_duration_sec": round(duration_sec, 1),
+        })
+    except Exception as e:
+        import traceback
+        print(f"[convert/job] {job_id} FATAL:\n{traceback.format_exc()}", flush=True)
+        _save_job(job_id, {"status": "error", "error": str(e)})
+    finally:
+        if os.path.exists(tmp_in):
+            try: os.remove(tmp_in)
+            except Exception: pass
+
 @app.get("/")
 def root():
     from fastapi.responses import RedirectResponse
@@ -459,6 +524,80 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
             extra=extra,
         )
 
+
+# ── Conversione asincrona (job-based) ─────────────────────────────────────────
+
+@app.post("/convert")
+async def convert_start(request: Request, file: UploadFile = File(...), format: str = "mp3"):
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED:
+        raise HTTPException(400, f"Formato non supportato: {ext}")
+    if format not in ["mp3", "m4a"]:
+        format = "mp3"
+
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(413, "File troppo grande")
+    file_mb = len(content) / 1_000_000
+
+    job_id  = str(uuid.uuid4())
+    tmp_in  = str(TEMP_DIR / f"{job_id}_in{ext}")
+    tmp_out = str(TEMP_DIR / f"{job_id}_432.{format}")
+    with open(tmp_in, "wb") as fh:
+        fh.write(content)
+
+    from core.converter import _get_duration
+    duration_sec = _get_duration(tmp_in) or 0.0
+    sox_timeout  = max(120, int(duration_sec * 3))
+
+    _save_job(job_id, {"status": "uploading", "progress": 0})
+    print(f"[convert/async] job={job_id}  file={file.filename}  size={file_mb:.1f}MB  duration={duration_sec:.1f}s", flush=True)
+
+    # Lancia la conversione in un thread background
+    t = threading.Thread(target=_run_conversion,
+                         args=(job_id, tmp_in, tmp_out, format, file.filename, file_mb, duration_sec, sox_timeout),
+                         daemon=True)
+    t.start()
+
+    return JSONResponse({"job_id": job_id})
+
+@app.get("/convert/status/{job_id}")
+def convert_status(job_id: str):
+    job = _load_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job non trovato")
+    # Non esporre output_path al client
+    safe = {k: v for k, v in job.items() if k != "output_path"}
+    return JSONResponse(safe)
+
+@app.get("/convert/download/{job_id}")
+def convert_download(job_id: str):
+    job = _load_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job non trovato")
+    if job.get("status") != "done" or job.get("already_432"):
+        raise HTTPException(400, "File non disponibile")
+    output_path = job.get("output_path", "")
+    if not output_path or not os.path.exists(output_path):
+        raise HTTPException(404, "File di output non trovato")
+
+    fmt  = job.get("format", "mp3")
+    stem = Path(job.get("filename", "rephase")).stem
+    media = "audio/mpeg" if fmt == "mp3" else "audio/mp4"
+
+    # Cleanup job + file dopo 60s
+    def _cleanup_job():
+        import time; time.sleep(60)
+        if os.path.exists(output_path):
+            try: os.remove(output_path)
+            except Exception: pass
+        jp = _job_path(job_id)
+        if jp.exists():
+            try: jp.unlink()
+            except Exception: pass
+    threading.Thread(target=_cleanup_job, daemon=True).start()
+
+    return FileResponse(path=output_path, filename=f"{stem}_432.{fmt}", media_type=media)
 
 import asyncio
 from fastapi.staticfiles import StaticFiles
