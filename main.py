@@ -842,6 +842,8 @@ async def create_checkout_session(request: Request):
     plan = body.get("plan", "monthly")
     if plan == "annual":
         price_id = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+    elif plan == "lifetime":
+        price_id = os.environ.get("STRIPE_PRICE_LIFETIME", "")
     else:
         price_id = os.environ.get("STRIPE_PRICE_MONTHLY", "")
     print(f"[checkout] plan={plan} price_id={'SET('+price_id[:12]+')' if price_id else 'MISSING'}", flush=True)
@@ -850,12 +852,13 @@ async def create_checkout_session(request: Request):
         return JSONResponse({"error": f"Price ID non configurato per piano: {plan}"}, status_code=400)
 
     base_url = os.environ.get("BASE_URL", "https://rephase-app.onrender.com")
+    checkout_mode = "payment" if plan == "lifetime" else "subscription"
 
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             line_items=[{"price": price_id, "quantity": 1}],
-            mode="subscription",
+            mode=checkout_mode,
             success_url=f"{base_url}/app?payment=success",
             cancel_url=f"{base_url}/app?payment=cancelled",
         )

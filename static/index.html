@@ -52,7 +52,7 @@ input[type=file] { display: none; }
 .format-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #bbb; background: #e0e0e0; font-size: 13px; font-weight: 500; color: #333; cursor: pointer; text-align: center; }
 .format-btn.active { background: #34c759; color: #1a1a1a; border-color: #34c759; }
 .btn-green { background: #34c759; color: #1a1a1a; border: none; border-radius: 980px; padding: 11px 28px; font-size: 14px; font-weight: 600; cursor: pointer; }
-.pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pricing { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .plan { background: #d8d8d8; border-radius: 18px; border: 0.5px solid #c0c0c0; padding: 24px; }
 .plan.featured { border: 2px solid #34c759; }
 .plan-badge { font-size: 11px; font-weight: 600; background: #34c759; color: #1a1a1a; border-radius: 980px; padding: 3px 10px; display: inline-block; margin-bottom: 12px; }
@@ -255,7 +255,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     </div>
     <div class="tab-content active" id="tab-verify">
       <div class="analysis-mode-toggle">
-        <button class="mode-btn active" id="mode-btn-quick" onclick="setAnalysisMode('quick')">Analisi rapida (90s)</button>
+        <button class="mode-btn active" id="mode-btn-quick" onclick="setAnalysisMode('quick')">Analisi rapida</button>
         <button class="mode-btn" id="mode-btn-full" onclick="setAnalysisMode('full')">Analisi completa (intero brano)</button>
       </div>
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
@@ -485,6 +485,20 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <li id="feat-blockchain" style="display:none;">🔒 Certificazione blockchain — documento legale con SHA256, timestamp e anchor Bitcoin</li>
       </ul>
       <button id="checkout-btn" onclick="startCheckout()" class="plan-cta">Abbonati ora</button>
+    </div>
+    <div class="plan">
+      <div class="plan-name">Una Tantum</div>
+      <div class="plan-price">CHF 199 <span>— pagamento unico</span></div>
+      <div class="plan-desc">Per chi vuole tutto, per sempre</div>
+      <ul class="plan-features">
+        <li>Verifiche illimitate</li>
+        <li>Conversioni illimitate</li>
+        <li>MP3 + M4A in uscita</li>
+        <li>Report certificato PDF</li>
+        <li>Conversione batch</li>
+        <li>Nessun rinnovo — accesso a vita</li>
+      </ul>
+      <button onclick="startCheckoutLifetime()" class="plan-cta">Acquista ora</button>
     </div>
   </div>
 </div>
@@ -1063,6 +1077,20 @@ function renderSpectralConvert(origData, convData, h) {
       }
     }
   );
+}
+async function startCheckoutLifetime(){
+  try {
+    const res = await fetch(API + '/create-checkout-session', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plan: 'lifetime'})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.detail || 'Errore server');
+    window.location.href = data.url;
+  } catch(e) {
+    alert('Errore durante il pagamento: ' + e.message);
+  }
 }
 async function startCheckout(){
   const btn = document.getElementById('checkout-btn');
@@ -1755,6 +1783,8 @@ document.getElementById('file-verify').addEventListener('change', async function
           const btnConv = document.getElementById('btn-converti-ora');
           if (btnConv) { btnConv.style.display = 'inline-block'; btnConv.onclick = function() { _pendingVerifyFile = file; switchTab('convert'); }; }
         }
+        // Salva il file verificato per riuso nella conversione (evita doppio upload)
+        _pendingVerifyFile = file;
         document.getElementById('cert-section').classList.remove('hidden');
         renderSpectral(d, file.name, _verifyHash, _verifyTime);
       } else if (data.status === 'error') {
@@ -1858,25 +1888,23 @@ document.getElementById("file-convert").addEventListener('change', function() {
   const _convHashPromise = file.arrayBuffer().then(buf => _sha256hex(buf));
   const _convTimestamp   = _zurichDisplayLine();
 
-  // Timer locale per la fase SoX (0 → 95% lentamente, ~4 min per arrivare a 95%)
+  // Timer conversione: 0 → 90% in 30 secondi (3%/sec), salta a 100% al "done"
   let _procTimer = null;
   let _procPct   = 0;
   const _startProcAnim = () => {
     _procPct = 0;
     uploadFill.style.width = '0%';
-    uploadLabel.textContent = 'SoX in elaborazione...';
-    const sox = document.getElementById('sox-sub');
-
-    sox.style.display = "none";
+    uploadLabel.textContent = 'Conversione in corso... 0%';
     _procTimer = setInterval(() => {
-      if (_procPct < 95) { _procPct = Math.min(95, _procPct + 0.4); }
-      uploadFill.style.width = _procPct.toFixed(1) + '%';
+      if (_procPct < 90) { _procPct = Math.min(90, _procPct + 3); }
+      uploadFill.style.width = _procPct.toFixed(0) + '%';
+      uploadLabel.textContent = 'Conversione in corso... ' + _procPct.toFixed(0) + '%';
     }, 1000);
   };
   const _stopProcAnim = () => {
     if (_procTimer) { clearInterval(_procTimer); _procTimer = null; }
     uploadFill.style.width = '100%';
-    document.getElementById('sox-sub').style.display = 'none';
+    uploadLabel.textContent = 'Conversione completata 100%';
   };
 
   // ── Upload asincrono + polling ──────────────────────────────────────────────
