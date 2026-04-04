@@ -399,7 +399,7 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
 
         result = await loop.run_in_executor(
             None,
-            functools.partial(convert_to_432, tmp_in, tmp_out, sox_timeout=sox_timeout),
+            functools.partial(convert_to_432, tmp_in, tmp_out, max_seconds=360, sox_timeout=sox_timeout),
         )
         if not result["success"]:
             esito = "error"
