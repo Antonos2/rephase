@@ -224,6 +224,7 @@ def health():
     print(f"[health] rubberband={rb_path}  sox={sox_path}  ffmpeg={ffmpeg_path}  engine={engine}", flush=True)
     return {
         "status":          "ok",
+        "hostname":        os.environ.get("HOSTNAME", "unknown"),
         "engine":          engine,
         "rubberband":      rb_path is not None,
         "rubberband_path": rb_path,
