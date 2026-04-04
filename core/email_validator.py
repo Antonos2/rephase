@@ -62,5 +62,5 @@ def validate_email(email: str) -> dict:
     if len(email) > 254 or len(local) > 64:
         return {"valid": False, "error": "Indirizzo email troppo lungo"}
     if is_temp_email(email):
-        return {"valid": False, "error": "Non sono accettati indirizzi email temporanei o usa e getta"}
+        return {"valid": False, "error": "Usa un'email reale per registrarti"}
     return {"valid": True, "error": None}
