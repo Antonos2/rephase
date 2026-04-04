@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Rephase API — pitch engine: Rubber Band (primary) + SoX (fallback)
+# Rephase API — pitch engine: Rubber Band R3 → ffmpeg librubberband → SoX
 import os, uuid, threading
 import stripe
 import time as _time
