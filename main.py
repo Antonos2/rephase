@@ -823,6 +823,23 @@ if __name__ == "__main__":
 
 # ── Stripe Checkout ────────────────────────────────────────────────────────
 
+# ── Validazione email (blocco temp mail) ──────────────────────────────────────
+
+@app.post("/validate-email")
+async def validate_email_endpoint(request: Request):
+    """Valida un indirizzo email — blocca servizi di email temporanea."""
+    from core.email_validator import validate_email
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"valid": False, "error": "Body JSON non valido"}, status_code=400)
+    email = body.get("email", "")
+    result = validate_email(email)
+    status = 200 if result["valid"] else 400
+    return JSONResponse(result, status_code=status)
+
+# ── Stripe Checkout ───────────────────────────────────────────────────────────
+
 @app.post("/create-checkout-session")
 async def create_checkout_session(request: Request):
     """Crea una sessione Stripe Checkout per abbonamento mensile o annuale."""
