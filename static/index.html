@@ -1897,16 +1897,25 @@ document.getElementById('file-verify').addEventListener('change', async function
           if (btnConv) { btnConv.style.display = 'inline-block'; btnConv.onclick = function() { _pendingVerifyFile = file; switchTab('convert'); }; }
         }
         if(_isGuest){
-          var _btnConv = document.getElementById('btn-converti-ora');
-          if(_btnConv) _btnConv.style.display='none';
-          var _hzTl = document.getElementById('hz-timeline-section');
-          if(_hzTl) _hzTl.classList.add('hidden');
-          var _cert = document.getElementById('cert-section');
-          if(_cert) _cert.classList.add('hidden');
-          var _btnSpec = document.getElementById('btn-spectral');
-          if(_btnSpec) _btnSpec.classList.add('hidden');
-          var _why = document.querySelector('.why');
-          if(_why) _why.style.display='none';
+          document.getElementById('btn-converti-ora').style.display='none';
+          document.getElementById('hz-timeline-section').classList.add('hidden');
+          document.getElementById('cert-section').classList.add('hidden');
+          document.getElementById('btn-spectral').classList.add('hidden');
+          document.getElementById('spectral-panel').classList.add('hidden');
+          document.getElementById('rv-detail').style.display='none';
+          var whyEl = document.querySelector('.why');
+          if(whyEl) whyEl.style.display='none';
+          var divider = document.querySelector('.divider');
+          if(divider) divider.style.display='none';
+          document.getElementById('prezzi').style.display='none';
+          var invito = document.getElementById('guest-invito');
+          if(!invito){
+            invito = document.createElement('div');
+            invito.id = 'guest-invito';
+            invito.style.cssText = 'text-align:center;margin:20px 0;padding:16px;background:#f0faf3;border-radius:12px;border:1.5px solid #34c759;';
+            invito.innerHTML = '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">Vuoi vedere il brano intero e convertirlo?</div><div style="font-size:13px;color:#555;margin-bottom:12px;">Registrati gratis \u2014 nessuna carta richiesta.</div><button onclick="chooseRegister()" style="background:#34c759;color:#1a1a1a;border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;cursor:pointer;">Registrati gratis \u2192</button>';
+            document.getElementById('result-verify').appendChild(invito);
+          }
         }
         // Salva il file verificato per riuso nella conversione (evita doppio upload)
         _pendingVerifyFile = file;
