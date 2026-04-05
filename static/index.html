@@ -517,7 +517,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
     <div id="auth-step-otp" style="display:none;">
       <p style="font-size:14px;color:#333;margin:12px 0 8px;">Inserisci il codice a 6 cifre inviato a:</p>
       <p id="auth-otp-email" style="font-size:13px;color:#1e8c3a;font-weight:600;margin-bottom:14px;"></p>
-      <input type="text" id="auth-otp" placeholder="000000" maxlength="6" inputmode="numeric" style="width:100%;padding:14px;border:1.5px solid #ccc;border-radius:10px;font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;">
+      <input type="text" id="auth-otp" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="off" style="width:100%;padding:14px;border:1.5px solid #ccc;border-radius:10px;font-size:24px;font-weight:700;text-align:center;letter-spacing:8px;outline:none;">
       <div id="auth-otp-err" style="color:#ff3b30;font-size:12px;margin-top:6px;display:none;"></div>
       <button id="auth-verify-btn" onclick="authVerifyOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Verifica</button>
       <button onclick="document.getElementById('auth-step-otp').style.display='none';document.getElementById('auth-step-email').style.display='block';" style="width:100%;margin-top:8px;padding:10px;background:none;border:1px solid #ccc;border-radius:10px;font-size:13px;color:#666;cursor:pointer;">Cambia email</button>
