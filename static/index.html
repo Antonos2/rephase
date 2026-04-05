@@ -509,8 +509,8 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   <div style="background:#fff;border-radius:16px;padding:28px;max-width:380px;width:92%;box-shadow:0 8px 40px rgba(0,0,0,.25);">
     <div style="font-size:18px;font-weight:700;margin-bottom:4px;">re<span style="color:#1e8c3a;">phase</span></div>
     <div id="auth-step-email">
-      <p style="font-size:14px;color:#333;margin:12px 0 16px;">Inserisci la tua email per registrarti o accedere.</p>
-      <input type="email" id="auth-email" placeholder="nome@esempio.com" style="width:100%;padding:12px;border:1.5px solid #ccc;border-radius:10px;font-size:15px;outline:none;">
+      <p style="font-size:15px;color:#1a1a1a;margin:12px 0 16px;font-weight:500;">Inserisci la tua email per registrarti o accedere.</p>
+      <input type="email" id="auth-email" placeholder="nome@esempio.com" style="width:100%;padding:13px;border:2px solid #bbb;border-radius:10px;font-size:16px;color:#1a1a1a;outline:none;-webkit-appearance:none;">
       <div id="auth-email-err" style="color:#ff3b30;font-size:12px;margin-top:6px;display:none;"></div>
       <button id="auth-send-btn" onclick="authSendOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Invia codice</button>
     </div>
@@ -522,7 +522,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       <button id="auth-verify-btn" onclick="authVerifyOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Verifica</button>
       <button onclick="document.getElementById('auth-step-otp').style.display='none';document.getElementById('auth-step-email').style.display='block';" style="width:100%;margin-top:8px;padding:10px;background:none;border:1px solid #ccc;border-radius:10px;font-size:13px;color:#666;cursor:pointer;">Cambia email</button>
     </div>
-    <button onclick="closeAuthModal()" style="width:100%;margin-top:12px;padding:8px;background:none;border:none;font-size:13px;color:#999;cursor:pointer;">Chiudi</button>
+    <button onclick="closeAuthModal()" style="width:100%;margin-top:12px;padding:10px;background:none;border:1px solid #ddd;border-radius:10px;font-size:14px;font-weight:500;color:#444;cursor:pointer;">Chiudi</button>
   </div>
 </div>
 
