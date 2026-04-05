@@ -532,6 +532,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 </footer>
 <script>
 const API="";
+let _isGuest = false;
 let fmt="mp3",convTimer=null,convPct=0;
 let _pendingVerifyFile = null;
 let _lastVerifyJobId = null;
@@ -1111,6 +1112,7 @@ function closeFreeChoiceModal(){
 }
 function chooseTryNow(){
   closeFreeChoiceModal();
+  _isGuest = true;
   setTimeout(function(){
     var el = document.getElementById('prezzi');
     if(el) el.style.display='none';
@@ -1889,15 +1891,27 @@ document.getElementById('file-verify').addEventListener('change', async function
         }
         document.getElementById('rv-detail').textContent = detail;
         document.getElementById('result-verify').classList.remove('hidden');
-        _showPricing();
-        if (!ok) {
+        if(!_isGuest) _showPricing();
+        if (!ok && !_isGuest) {
           const btnConv = document.getElementById('btn-converti-ora');
           if (btnConv) { btnConv.style.display = 'inline-block'; btnConv.onclick = function() { _pendingVerifyFile = file; switchTab('convert'); }; }
         }
+        if(_isGuest){
+          var _btnConv = document.getElementById('btn-converti-ora');
+          if(_btnConv) _btnConv.style.display='none';
+          var _hzTl = document.getElementById('hz-timeline-section');
+          if(_hzTl) _hzTl.classList.add('hidden');
+          var _cert = document.getElementById('cert-section');
+          if(_cert) _cert.classList.add('hidden');
+          var _btnSpec = document.getElementById('btn-spectral');
+          if(_btnSpec) _btnSpec.classList.add('hidden');
+          var _why = document.querySelector('.why');
+          if(_why) _why.style.display='none';
+        }
         // Salva il file verificato per riuso nella conversione (evita doppio upload)
         _pendingVerifyFile = file;
-        document.getElementById('cert-section').classList.remove('hidden');
-        renderSpectral(d, file.name, _verifyHash, _verifyTime);
+        if(!_isGuest) document.getElementById('cert-section').classList.remove('hidden');
+        if(!_isGuest) renderSpectral(d, file.name, _verifyHash, _verifyTime);
       } else if (data.status === 'error') {
         _stopPoll();
         st.textContent = 'Errore: ' + (data.error || 'Errore sconosciuto');
