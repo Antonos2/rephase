@@ -1213,6 +1213,63 @@ async function authSendOtp() {
   }
 }
 
+function _updateUserUI(email, conversionsRemaining) {
+  // Nasconde il box verde guest-invito
+  var guestInvito = document.getElementById('guest-invito');
+  if (guestInvito) guestInvito.style.display = 'none';
+
+  // Rimuovi eventuale box precedente
+  var old = document.getElementById('user-quota-box');
+  if (old) old.remove();
+
+  var box = document.createElement('div');
+  box.id = 'user-quota-box';
+  box.style.cssText = 'text-align:center;margin:20px 0;padding:18px;background:#f0faf3;border-radius:12px;border:1.5px solid #34c759;';
+
+  var canConvert = conversionsRemaining > 0;
+  var btnStyle = canConvert
+    ? 'background:#34c759;color:#1a1a1a;cursor:pointer;'
+    : 'background:#ccc;color:#888;cursor:not-allowed;';
+
+  box.innerHTML =
+    '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + email + '</div>' +
+    '<div style="font-size:13px;color:#555;margin-bottom:12px;">Conversioni disponibili: ' + conversionsRemaining + ' / 2</div>' +
+    '<button id="user-convert-btn" ' + (canConvert ? '' : 'disabled') + ' style="border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;' + btnStyle + '">' +
+      (canConvert ? 'Converti a 432 Hz \u2192' : 'Conversioni esaurite') +
+    '</button>' +
+    '<div style="margin-top:10px;font-size:12px;color:#888;">' +
+      '<span style="margin-right:12px;">MP3 \u2713</span>' +
+      '<span style="opacity:0.6;">\uD83D\uDD12 M4A \u2014 Pro</span>' +
+    '</div>';
+
+  var resultVerify = document.getElementById('result-verify');
+  if (resultVerify) {
+    resultVerify.appendChild(box);
+  }
+
+  if (canConvert) {
+    setTimeout(function() {
+      var btn = document.getElementById('user-convert-btn');
+      if (btn) btn.onclick = function() { switchTab('convert'); };
+    }, 0);
+  }
+}
+
+async function _loadUserQuota() {
+  var token = localStorage.getItem('rephase_session');
+  var email = localStorage.getItem('rephase_email');
+  if (!token || !email) return;
+  try {
+    var res = await fetch(API + '/auth/conversions', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (res.ok) {
+      var data = await res.json();
+      _updateUserUI(data.email || email, data.conversions_remaining);
+    }
+  } catch(e) { console.warn('[auth] quota load error', e); }
+}
+
 async function authVerifyOtp() {
   const email = document.getElementById('auth-otp-email').textContent;
   const code  = document.getElementById('auth-otp').value.trim();
@@ -1231,7 +1288,17 @@ async function authVerifyOtp() {
     localStorage.setItem('rephase_session', data.session_token);
     localStorage.setItem('rephase_email', data.email);
     closeAuthModal();
-    alert('Benvenuto su Rephase, ' + data.email + '!');
+    // Fetch quota conversioni e aggiorna UI
+    try {
+      const convRes = await fetch(API + '/auth/conversions', {
+        headers: { 'Authorization': 'Bearer ' + data.session_token }
+      });
+      const convData = await convRes.json();
+      if (convRes.ok) {
+        _updateUserUI(data.email, convData.conversions_remaining);
+      }
+    } catch(e) { console.warn('[auth] quota fetch error', e); }
+
   } catch(e) {
     errEl.textContent = 'Errore di connessione'; errEl.style.display = 'block';
   } finally {
@@ -2356,6 +2423,7 @@ window.addEventListener('DOMContentLoaded', function(){
   _lockApp();
   if(localStorage.getItem('rephase_session')){
     _unlockApp();
+    _loadUserQuota();
   }
 });
 </script>

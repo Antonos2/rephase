@@ -155,6 +155,10 @@ def _load_job(job_id):
 def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_sec, sox_timeout, cleanup_input=True):
     """Eseguita in background thread — aggiorna il job file."""
     try:
+        # Recupera email autenticata dal job (se presente)
+        _job_data = _load_job(job_id) or {}
+        _conv_auth_email = _job_data.get("_auth_email")
+
         _save_job(job_id, {"status": "analyzing", "progress": 10})
         pre_check = analyze_file(tmp_in)
         if pre_check.get("is_432"):
@@ -172,6 +176,11 @@ def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_se
         if not result["success"]:
             _save_job(job_id, {"status": "error", "error": result.get("error", "Errore sconosciuto")})
             return
+
+        # Incrementa quota conversioni se utente autenticato
+        if _conv_auth_email:
+            from core.auth import increment_conversions
+            increment_conversions(_conv_auth_email)
 
         _save_job(job_id, {
             "status": "done",
@@ -332,6 +341,20 @@ async def verify(request: Request, background_tasks: BackgroundTasks, file: Uplo
 @app.post("/convert/sync")
 async def convert_sync(request: Request, background_tasks: BackgroundTasks, file: UploadFile = File(...), format: str = "mp3"):
     global _active_conversions
+
+    # ── Quota check ──
+    from core.auth import get_email_by_token, get_conversions_used, increment_conversions, FREE_CONVERSIONS_MAX
+    _auth_email = None
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        _auth_email = get_email_by_token(authorization[7:])
+    if _auth_email:
+        if get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
+            return JSONResponse(
+                {"error": "Hai esaurito le 2 conversioni gratuite. Abbonati a Pro per conversioni illimitate."},
+                status_code=403,
+            )
+
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED:
         raise HTTPException(400, f"Formato non supportato: {ext}")
@@ -404,6 +427,9 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
         if result.get("corr_pass_error"):
             stats_headers["X-Corr-Pass-Error"] = result["corr_pass_error"][:200]
             stats_headers["Access-Control-Expose-Headers"] += ",X-Corr-Pass-Error"
+
+        if _auth_email:
+            increment_conversions(_auth_email)
 
         background_tasks.add_task(cleanup, tmp_out)
         return FileResponse(
@@ -484,6 +510,19 @@ async def convert_from_verify(request: Request):
 
 @app.post("/convert")
 async def convert_start(request: Request, file: UploadFile = File(...), format: str = "mp3"):
+    # ── Quota check ──
+    from core.auth import get_email_by_token, get_conversions_used, increment_conversions, FREE_CONVERSIONS_MAX
+    _auth_email = None
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        _auth_email = get_email_by_token(authorization[7:])
+    if _auth_email:
+        if get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
+            return JSONResponse(
+                {"error": "Hai esaurito le 2 conversioni gratuite. Abbonati a Pro per conversioni illimitate."},
+                status_code=403,
+            )
+
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED:
         raise HTTPException(400, f"Formato non supportato: {ext}")
@@ -505,7 +544,7 @@ async def convert_start(request: Request, file: UploadFile = File(...), format: 
     duration_sec = _get_duration(tmp_in) or 0.0
     sox_timeout  = max(120, int(duration_sec * 3))
 
-    _save_job(job_id, {"status": "uploading", "progress": 0})
+    _save_job(job_id, {"status": "uploading", "progress": 0, "_auth_email": _auth_email})
     print(f"[convert/async] job={job_id}  file={file.filename}  size={file_mb:.1f}MB  duration={duration_sec:.1f}s", flush=True)
 
     # Lancia la conversione in un thread background
@@ -922,6 +961,25 @@ async def verify_otp_endpoint(request: Request):
     result = verify_otp(email, code)
     status = 200 if result["success"] else 400
     return JSONResponse(result, status_code=status)
+
+@app.get("/auth/conversions")
+async def auth_conversions(request: Request):
+    """Ritorna le conversioni usate/rimanenti per l'utente autenticato."""
+    from core.auth import get_email_by_token, get_conversions_used, FREE_CONVERSIONS_MAX
+    authorization = request.headers.get("authorization", "")
+    if not authorization.startswith("Bearer "):
+        return JSONResponse({"error": "Token mancante"}, status_code=401)
+    token = authorization[7:]
+    email = get_email_by_token(token)
+    if not email:
+        return JSONResponse({"error": "Sessione non valida"}, status_code=401)
+    used = get_conversions_used(email)
+    return JSONResponse({
+        "email": email,
+        "conversions_used": used,
+        "conversions_max": FREE_CONVERSIONS_MAX,
+        "conversions_remaining": max(0, FREE_CONVERSIONS_MAX - used),
+    })
 
 # ── Stripe Checkout ───────────────────────────────────────────────────────────
 

@@ -14,6 +14,35 @@ _otp_lock  = threading.Lock()
 OTP_TTL    = 300  # 5 minuti
 OTP_MAX_ATTEMPTS = 5
 
+# ── Session store (token → email) ────────────────────────────────────────────
+_sessions_store = {}   # session_token → email
+_sessions_lock  = threading.Lock()
+
+# ── Quota conversioni Free ────────────────────────────────────────────────────
+FREE_CONVERSIONS_MAX = 2
+_conversions_store = {}   # email → numero conversioni usate
+_conversions_lock  = threading.Lock()
+
+
+def get_conversions_used(email: str) -> int:
+    """Ritorna il numero di conversioni usate dall'utente (0 se non esiste)."""
+    email = email.strip().lower()
+    with _conversions_lock:
+        return _conversions_store.get(email, 0)
+
+
+def increment_conversions(email: str):
+    """Incrementa il contatore conversioni per l'utente."""
+    email = email.strip().lower()
+    with _conversions_lock:
+        _conversions_store[email] = _conversions_store.get(email, 0) + 1
+
+
+def get_email_by_token(token: str):
+    """Ritorna l'email associata al session token, o None."""
+    with _sessions_lock:
+        return _sessions_store.get(token)
+
 def _cleanup_expired():
     now = time.time()
     with _otp_lock:
@@ -117,6 +146,8 @@ def verify_otp(email: str, code: str) -> dict:
         _otp_store.pop(email, None)
 
     session_token = secrets.token_urlsafe(32)
+    with _sessions_lock:
+        _sessions_store[session_token] = email
     print(f"[auth] OTP verificato per {email[:3]}***@{email.split('@')[1]}", flush=True)
 
     return {"success": True, "session_token": session_token, "email": email}
