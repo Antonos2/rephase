@@ -1103,7 +1103,20 @@ function renderSpectralConvert(origData, convData, h) {
     }
   );
 }
-function startFreeSignup(){ openAuthModal(); }
+function startFreeSignup(){
+  document.getElementById('free-choice-modal').style.display='flex';
+}
+function closeFreeChoiceModal(){
+  document.getElementById('free-choice-modal').style.display='none';
+}
+function chooseTryNow(){
+  closeFreeChoiceModal();
+  // utente ospite — può usare l'app senza registrazione
+}
+function chooseRegister(){
+  closeFreeChoiceModal();
+  openAuthModal();
+}
 
 function openAuthModal() {
   const m = document.getElementById('auth-modal');
@@ -2310,5 +2323,20 @@ function closeCertDemo() {
   </div>
 </div>
 
+<div id="free-choice-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:36px;max-width:420px;width:92%;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="font-size:22px;font-weight:700;margin-bottom:6px;color:#1a1a1a;">Inizia con re<span style="color:#1e8c3a;">phase</span></div>
+    <div style="font-size:14px;color:#555;margin-bottom:28px;">Scegli come vuoi iniziare.</div>
+    <div onclick="chooseTryNow()" style="border:2px solid #e0e0e0;border-radius:14px;padding:20px;margin-bottom:12px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1e8c3a'" onmouseout="this.style.borderColor='#e0e0e0'">
+      <div style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Prova subito &rarr;</div>
+      <div style="font-size:13px;color:#555;">Verifica i primi 90 secondi di qualsiasi brano. Nessuna registrazione richiesta.</div>
+    </div>
+    <div onclick="chooseRegister()" style="border:2px solid #34c759;border-radius:14px;padding:20px;margin-bottom:20px;cursor:pointer;background:#f0faf3;transition:background .15s;" onmouseover="this.style.background='#e0f5e6'" onmouseout="this.style.background='#f0faf3'">
+      <div style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Registrati gratis &rarr;</div>
+      <div style="font-size:13px;color:#555;">Verifica intera &middot; 2 conversioni MP3 incluse &middot; Nessuna carta richiesta.</div>
+    </div>
+    <button onclick="closeFreeChoiceModal()" style="width:100%;padding:10px;background:none;border:1px solid #ddd;border-radius:10px;font-size:14px;font-weight:500;color:#444;cursor:pointer;">Chiudi</button>
+  </div>
+</div>
 </body>
 </html>
