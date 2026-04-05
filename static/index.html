@@ -78,6 +78,8 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 .footer-text { font-size: 12px; color: #444; line-height: 1.6; }
 .hidden { display: none !important; }
 @keyframes rephase-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.75;transform:scale(1.04);}}
+@keyframes rephase-tab-pulse{0%,100%{box-shadow:0 0 0 0 rgba(52,199,89,0.5);}50%{box-shadow:0 0 12px 4px rgba(52,199,89,0.45);}}
+.pulse-glow{animation:rephase-tab-pulse 1.5s ease-in-out infinite;}
 .logo{animation:rephase-pulse 2.8s ease-in-out infinite;}
 .status.processing { color: #1e8c3a; font-weight: 600; animation: rephase-pulse 1.8s ease-in-out infinite; }
 /* ── Analysis mode toggle ── */
@@ -308,7 +310,6 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
           <div class="verdict-text" id="rv-text">—</div>
         </div>
         <div id="rv-detail" style="font-size:11px;color:#444;margin:-12px 0 12px 0;padding:0 4px;line-height:1.7;"></div>
-        <div id="btn-converti-ora" style="display:none;text-align:center;margin:12px 0;"><button class="btn-green" style="font-size:14px;padding:11px 32px;">Converti ora a 432 Hz</button></div>
         <!-- Hz timeline chart (always built, shown when data available) -->
         <div class="hz-timeline-section hidden" id="hz-timeline-section">
           <div class="hz-timeline-header">
@@ -1247,12 +1248,67 @@ function _updateUserUI(email, conversionsRemaining) {
     resultVerify.appendChild(box);
   }
 
+  // Pulse sul tab Converti se ha conversioni disponibili
+  var tabConvert = document.getElementById('tab-convert-btn');
+  if (tabConvert) {
+    if (canConvert) { tabConvert.classList.add('pulse-glow'); }
+    else { tabConvert.classList.remove('pulse-glow'); }
+  }
+
+  // Aggiorna i format-btn nella tab Converti per utenti Free loggati
+  _setupFreeFormatButtons(canConvert);
+
   if (canConvert) {
     setTimeout(function() {
       var btn = document.getElementById('user-convert-btn');
       if (btn) btn.onclick = function() { switchTab('convert'); };
     }, 0);
   }
+}
+
+function _setupFreeFormatButtons(canConvert) {
+  var formatBtns = document.querySelectorAll('.format-btn');
+  if (formatBtns.length < 2) return;
+  var mp3Btn = formatBtns[0];
+  var m4aBtn = formatBtns[1];
+
+  // M4A bloccato per utenti Free
+  m4aBtn.textContent = '\uD83D\uDD12 M4A \u2014 Pro';
+  m4aBtn.style.opacity = '0.5';
+  m4aBtn.style.cursor = 'not-allowed';
+  m4aBtn.onclick = function(e) { e.stopPropagation(); };
+
+  // Pulse su entrambi se ha conversioni
+  if (canConvert) {
+    mp3Btn.classList.add('pulse-glow');
+    m4aBtn.classList.add('pulse-glow');
+  } else {
+    mp3Btn.classList.remove('pulse-glow');
+    m4aBtn.classList.remove('pulse-glow');
+  }
+
+  // MP3: al click ferma pulse su entrambi
+  var origMp3Click = mp3Btn.onclick;
+  mp3Btn.onclick = function(e) {
+    mp3Btn.classList.remove('pulse-glow');
+    m4aBtn.classList.remove('pulse-glow');
+    selectFormat('mp3', mp3Btn);
+  };
+}
+
+async function _refreshQuotaAfterConvert() {
+  var token = localStorage.getItem('rephase_session');
+  var email = localStorage.getItem('rephase_email');
+  if (!token || !email) return;
+  try {
+    var res = await fetch(API + '/auth/conversions', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (res.ok) {
+      var data = await res.json();
+      _updateUserUI(data.email || email, data.conversions_remaining);
+    }
+  } catch(e) { console.warn('[auth] quota refresh error', e); }
 }
 
 async function _loadUserQuota() {
@@ -1355,7 +1411,7 @@ function setBilling(mode,el){
   const certBtn = document.getElementById('cert-gen-btn');
   if (certBtn) { certBtn.classList.toggle('locked', !annual); certBtn.firstChild.textContent = annual ? ' Certifica questo brano & Registra su Blockchain →' : '🔒 Certifica questo brano & Registra su Blockchain →'; }
 }
-function switchTab(t){if(t==="convert"&&_pendingVerifyFile){setTimeout(function(){startConvertWithFile(_pendingVerifyFile);_pendingVerifyFile=null;},100);}document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');}
+function switchTab(t){if(t==="convert"&&_pendingVerifyFile){setTimeout(function(){startConvertWithFile(_pendingVerifyFile);_pendingVerifyFile=null;},100);}document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='verify')||(i===1&&t==='convert')));document.getElementById('tab-verify').classList.toggle('active',t==='verify');document.getElementById('tab-convert').classList.toggle('active',t==='convert');var tc=document.getElementById('tab-convert-btn');if(tc)tc.classList.remove('pulse-glow');}
 function selectFormat(f,el){fmt=f;document.querySelectorAll('.format-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');}
 let _soxTimer = null;
 function _stopSoxAnim() { clearInterval(_soxTimer); _soxTimer = null; }
@@ -2007,11 +2063,9 @@ document.getElementById('file-verify').addEventListener('change', async function
         document.getElementById('result-verify').classList.remove('hidden');
         if(!_isGuest) _showPricing();
         if (!ok && !_isGuest) {
-          const btnConv = document.getElementById('btn-converti-ora');
-          if (btnConv) { btnConv.style.display = 'inline-block'; btnConv.onclick = function() { _pendingVerifyFile = file; switchTab('convert'); }; }
+          _pendingVerifyFile = file;
         }
         if(_isGuest){
-          document.getElementById('btn-converti-ora').style.display='none';
           document.getElementById('hz-timeline-section').classList.add('hidden');
           document.getElementById('cert-section').classList.add('hidden');
           document.getElementById('btn-spectral').classList.add('hidden');
@@ -2182,6 +2236,7 @@ async function _startConvertFromVerify(file, verifyJobId) {
           document.getElementById('btn-spectral-conv').classList.remove('hidden');
           document.getElementById('result-convert').classList.remove('hidden');
           _showPricing(); st.className = 'status';
+          _refreshQuotaAfterConvert();
 
         } else if (job.status === 'error') {
           clearInterval(pollInterval); _stopProcAnim();
@@ -2379,6 +2434,7 @@ document.getElementById("file-convert").addEventListener('change', function() {
           document.getElementById('result-convert').classList.remove('hidden');
           _showPricing();
           st.className = 'status';
+          _refreshQuotaAfterConvert();
 
         } else if (job.status === 'error') {
           clearInterval(pollInterval);
