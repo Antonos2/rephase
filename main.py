@@ -892,6 +892,7 @@ async def validate_email_endpoint(request: Request):
 async def send_otp_endpoint(request: Request):
     """Invia codice OTP a 6 cifre via email (Resend)."""
     from core.auth import generate_otp
+    from core.email_validator import validate_email
     try:
         body = await request.json()
     except Exception:
@@ -899,6 +900,9 @@ async def send_otp_endpoint(request: Request):
     email = body.get("email", "")
     if not email:
         return JSONResponse({"success": False, "error": "Email richiesta"}, status_code=400)
+    validation = validate_email(email)
+    if not validation["valid"]:
+        return JSONResponse({"success": False, "error": validation["error"]}, status_code=400)
     result = generate_otp(email)
     status = 200 if result["success"] else 400
     return JSONResponse(result, status_code=status)
