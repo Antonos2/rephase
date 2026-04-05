@@ -399,15 +399,19 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
         return {"success": False, "error": "Nessun engine pitch shift trovato (rubberband / ffmpeg / sox)"}
 
     tmp_in  = tempfile.mktemp(suffix=".wav")
+    tmp_mono = tempfile.mktemp(suffix=".wav")
     tmp_432 = tempfile.mktemp(suffix=".wav")
     engine_used = "unknown"
     try:
+        # Decodifica stereo per il pitch shift
         _load_as_wav(input_path, tmp_in, channels=2, max_seconds=max_seconds)
         tmp_in_size = os.path.getsize(tmp_in) if os.path.exists(tmp_in) else -1
         print(f"[convert] decode_done  tmp_in_size={tmp_in_size}", flush=True)
         if tmp_in_size <= 0:
             return {"success": False, "error": "Decodifica WAV fallita: file vuoto"}
-        samples, sr = _read_wav_samples(tmp_in)
+        # Decodifica mono per la pre-analisi A4 (evita interleaved L/R che falsa la FFT)
+        _load_as_wav(input_path, tmp_mono, channels=1, max_seconds=max_seconds)
+        samples, sr = _read_wav_samples(tmp_mono)
         pre = _measure_a4(samples, sr)
         print(f"[convert] pre_analysis  success={pre.get('success')}  peak={pre.get('peak_freq')}  is_432={pre.get('is_432')}", flush=True)
         if not pre["success"]:
@@ -530,5 +534,5 @@ def convert_to_432(input_path, output_path, max_seconds=None, sox_timeout=None):
         print(f"[convert] FATAL Exception:\n{traceback.format_exc()}", flush=True)
         return {"success": False, "error": str(e)}
     finally:
-        for f in [tmp_in, tmp_432]:
+        for f in [tmp_in, tmp_mono, tmp_432]:
             if os.path.exists(f): os.remove(f)
