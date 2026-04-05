@@ -1111,7 +1111,8 @@ function closeFreeChoiceModal(){
 }
 function chooseTryNow(){
   closeFreeChoiceModal();
-  // utente ospite — può usare l'app senza registrazione
+  _hidePricing();
+  document.getElementById('prezzi').style.display='none';
 }
 function chooseRegister(){
   closeFreeChoiceModal();
