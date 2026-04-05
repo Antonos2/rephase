@@ -536,26 +536,46 @@ let _isGuest = false;
 let _appUnlocked = false;
 
 function _lockApp(){
+  // Drop area
   var da1 = document.getElementById('drop-area-verify');
   var da2 = document.getElementById('drop-area-convert');
   if(da1){ da1.style.pointerEvents='none'; da1.style.opacity='0.4'; }
   if(da2){ da2.style.pointerEvents='none'; da2.style.opacity='0.4'; }
+  // File input
   var fi1 = document.getElementById('file-verify');
   var fi2 = document.getElementById('file-convert');
   if(fi1) fi1.disabled=true;
   if(fi2) fi2.disabled=true;
+  // Tab Converti
+  var tabConvert = document.getElementById('tab-convert-btn');
+  if(tabConvert){ tabConvert.style.pointerEvents='none'; tabConvert.style.opacity='0.4'; }
+  // Bottoni analisi veloce e precisa
+  var modeQuick = document.getElementById('mode-btn-quick');
+  var modeFull = document.getElementById('mode-btn-full');
+  if(modeQuick){ modeQuick.style.pointerEvents='none'; modeQuick.style.opacity='0.4'; }
+  if(modeFull){ modeFull.style.pointerEvents='none'; modeFull.style.opacity='0.4'; }
 }
 
 function _unlockApp(){
   _appUnlocked = true;
+  // Drop area
   var da1 = document.getElementById('drop-area-verify');
   var da2 = document.getElementById('drop-area-convert');
   if(da1){ da1.style.pointerEvents=''; da1.style.opacity=''; }
   if(da2){ da2.style.pointerEvents=''; da2.style.opacity=''; }
+  // File input
   var fi1 = document.getElementById('file-verify');
   var fi2 = document.getElementById('file-convert');
   if(fi1) fi1.disabled=false;
   if(fi2) fi2.disabled=false;
+  // Tab Converti
+  var tabConvert = document.getElementById('tab-convert-btn');
+  if(tabConvert){ tabConvert.style.pointerEvents=''; tabConvert.style.opacity=''; }
+  // Bottoni analisi veloce e precisa
+  var modeQuick = document.getElementById('mode-btn-quick');
+  var modeFull = document.getElementById('mode-btn-full');
+  if(modeQuick){ modeQuick.style.pointerEvents=''; modeQuick.style.opacity=''; }
+  if(modeFull){ modeFull.style.pointerEvents=''; modeFull.style.opacity=''; }
 }
 
 let fmt="mp3",convTimer=null,convPct=0;
