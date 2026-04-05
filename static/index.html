@@ -533,6 +533,31 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 <script>
 const API="";
 let _isGuest = false;
+let _appUnlocked = false;
+
+function _lockApp(){
+  var da1 = document.getElementById('drop-area-verify');
+  var da2 = document.getElementById('drop-area-convert');
+  if(da1){ da1.style.pointerEvents='none'; da1.style.opacity='0.4'; }
+  if(da2){ da2.style.pointerEvents='none'; da2.style.opacity='0.4'; }
+  var fi1 = document.getElementById('file-verify');
+  var fi2 = document.getElementById('file-convert');
+  if(fi1) fi1.disabled=true;
+  if(fi2) fi2.disabled=true;
+}
+
+function _unlockApp(){
+  _appUnlocked = true;
+  var da1 = document.getElementById('drop-area-verify');
+  var da2 = document.getElementById('drop-area-convert');
+  if(da1){ da1.style.pointerEvents=''; da1.style.opacity=''; }
+  if(da2){ da2.style.pointerEvents=''; da2.style.opacity=''; }
+  var fi1 = document.getElementById('file-verify');
+  var fi2 = document.getElementById('file-convert');
+  if(fi1) fi1.disabled=false;
+  if(fi2) fi2.disabled=false;
+}
+
 let fmt="mp3",convTimer=null,convPct=0;
 let _pendingVerifyFile = null;
 let _lastVerifyJobId = null;
@@ -1112,6 +1137,7 @@ function closeFreeChoiceModal(){
 }
 function chooseTryNow(){
   closeFreeChoiceModal();
+  _unlockApp();
   _isGuest = true;
   setTimeout(function(){
     var el = document.getElementById('prezzi');
@@ -1126,6 +1152,7 @@ function chooseTryNow(){
 }
 function chooseRegister(){
   closeFreeChoiceModal();
+  _unlockApp();
   openAuthModal();
 }
 
@@ -2303,6 +2330,14 @@ function openCertDemo() {
 function closeCertDemo() {
   document.getElementById('cert-demo-modal').classList.remove('open');
 }
+
+// Blocca app al caricamento
+window.addEventListener('DOMContentLoaded', function(){
+  _lockApp();
+  if(localStorage.getItem('rephase_session')){
+    _unlockApp();
+  }
+});
 </script>
 
 <!-- Cert demo modal -->
@@ -2358,12 +2393,16 @@ function closeCertDemo() {
 <div id="free-choice-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:20px;padding:36px;max-width:420px;width:92%;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
     <div style="font-size:22px;font-weight:700;margin-bottom:6px;color:#1a1a1a;">Inizia con re<span style="color:#1e8c3a;">phase</span></div>
-    <div style="font-size:14px;color:#555;margin-bottom:28px;">Scegli come vuoi iniziare.</div>
-    <div onclick="chooseTryNow()" style="border:2px solid #e0e0e0;border-radius:14px;padding:20px;margin-bottom:12px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1e8c3a'" onmouseout="this.style.borderColor='#e0e0e0'">
+    <div style="font-size:14px;color:#555;margin-bottom:20px;">Scegli come vuoi iniziare.</div>
+    <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:20px;cursor:pointer;font-size:13px;color:#333;line-height:1.5;">
+      <input type="checkbox" id="accept-terms" onchange="document.getElementById('btn-try-now').style.opacity=this.checked?'1':'0.4';document.getElementById('btn-try-now').style.pointerEvents=this.checked?'auto':'none';document.getElementById('btn-register').style.opacity=this.checked?'1':'0.4';document.getElementById('btn-register').style.pointerEvents=this.checked?'auto':'none';" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;accent-color:#34c759;">
+      <span>Ho letto e accetto la <a href="/privacy" target="_blank" style="color:#1e8c3a;">Privacy Policy</a> e i <a href="/terms" target="_blank" style="color:#1e8c3a;">Termini di servizio</a></span>
+    </label>
+    <div id="btn-try-now" onclick="chooseTryNow()" style="opacity:0.4;pointer-events:none;border:2px solid #e0e0e0;border-radius:14px;padding:20px;margin-bottom:12px;cursor:pointer;transition:border-color .15s;" onmouseover="this.style.borderColor='#1e8c3a'" onmouseout="this.style.borderColor='#e0e0e0'">
       <div style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Prova subito &rarr;</div>
       <div style="font-size:13px;color:#555;">Verifica i primi 90 secondi di qualsiasi brano. Nessuna registrazione richiesta.</div>
     </div>
-    <div onclick="chooseRegister()" style="border:2px solid #34c759;border-radius:14px;padding:20px;margin-bottom:20px;cursor:pointer;background:#f0faf3;transition:background .15s;" onmouseover="this.style.background='#e0f5e6'" onmouseout="this.style.background='#f0faf3'">
+    <div id="btn-register" onclick="chooseRegister()" style="opacity:0.4;pointer-events:none;border:2px solid #34c759;border-radius:14px;padding:20px;margin-bottom:20px;cursor:pointer;background:#f0faf3;transition:background .15s;" onmouseover="this.style.background='#e0f5e6'" onmouseout="this.style.background='#f0faf3'">
       <div style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Registrati gratis &rarr;</div>
       <div style="font-size:13px;color:#555;">Verifica intera &middot; 2 conversioni MP3 incluse &middot; Nessuna carta richiesta.</div>
     </div>
