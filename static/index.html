@@ -1111,8 +1111,14 @@ function closeFreeChoiceModal(){
 }
 function chooseTryNow(){
   closeFreeChoiceModal();
-  _hidePricing();
-  document.getElementById('prezzi').style.display='none';
+  setTimeout(function(){
+    var el = document.getElementById('prezzi');
+    if(el) el.style.display='none';
+    var tabConvert = document.getElementById('tab-convert-btn');
+    if(tabConvert) tabConvert.style.display='none';
+    var formatSelect = document.querySelector('.format-select');
+    if(formatSelect) formatSelect.style.display='none';
+  }, 100);
 }
 function chooseRegister(){
   closeFreeChoiceModal();
