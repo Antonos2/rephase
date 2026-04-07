@@ -1463,6 +1463,8 @@ function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd, 
   window._userConversionsRemaining = conversionsRemaining;
   window._userSubscriptionEnd = subscriptionEnd || null;
   window._userUsername = username || null;
+  // Display name: preferisci username (rephase_xxxxx) all'email
+  var displayName = username || window._userUsername || email;
   // Aggiorna anche la auth-bar inline (badge piano)
   if (typeof _renderAuthBar === 'function') _renderAuthBar();
   // Aggiorna stato del tab Converti (blocco free_exhausted)
@@ -1492,7 +1494,7 @@ function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd, 
     // ── UI Pro / Lifetime ───────────────────────────────────────
     box.style.cssText = 'text-align:center;margin:20px 0;padding:18px;background:linear-gradient(135deg,#f0faf3,#e8f5e9);border-radius:12px;border:1.5px solid ' + badgeColor + ';';
     box.innerHTML =
-      '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + email + '</div>' +
+      '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + displayName + '</div>' +
       '<div style="display:inline-block;background:' + badgeColor + ';color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:980px;margin-bottom:10px;">' + planBadge + '</div>' +
       '<div style="font-size:13px;font-weight:700;color:#1e8c3a;margin-bottom:12px;">Conversioni illimitate</div>' +
       '<button id="user-convert-btn" style="border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;background:#34c759;color:#1a1a1a;cursor:pointer;">' +
@@ -1511,7 +1513,7 @@ function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd, 
       : 'background:#ccc;color:#888;cursor:not-allowed;';
 
     box.innerHTML =
-      '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + email + '</div>' +
+      '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + displayName + '</div>' +
       '<div style="display:inline-block;background:#888;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:980px;margin-bottom:10px;">FREE</div>' +
       '<div style="font-size:13px;font-weight:700;color:#555;margin-bottom:12px;">Conversioni disponibili: ' + conversionsRemaining + ' / 2</div>' +
       '<button id="user-convert-btn" ' + (canConvert ? '' : 'disabled') + ' style="border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;' + btnStyle + '">' +
