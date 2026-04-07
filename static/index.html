@@ -447,9 +447,17 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="format-btn" onclick="selectFormat('m4a',this)">M4A</div>
       </div>
       <input type="file" id="file-convert" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" id="drop-area-convert" onclick="document.getElementById('file-convert').click()">
+      <div class="drop-area" id="drop-area-convert" onclick="if(window._convertBlocked){return;}document.getElementById('file-convert').click()">
         <div class="drop-title" id="convert-label">Trascina il file da convertire</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
+      </div>
+      <div id="convert-blocked-msg" style="display:none;margin-top:14px;padding:14px;background:#fff5f5;border:1px solid #f5c6cb;border-radius:10px;text-align:center;">
+        <div style="color:#c0392b;font-weight:700;font-size:14px;margin-bottom:10px;">Hai esaurito le conversioni gratuite</div>
+        <div style="font-size:13px;color:#555;margin-bottom:12px;">Scegli Pro o Una Tantum per continuare</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <a href="#" onclick="event.preventDefault();openSignupModal('pro');return false;" style="display:inline-block;background:#34c759;color:#1a1a1a;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;">Abbonati a Pro</a>
+          <a href="#" onclick="event.preventDefault();openSignupModal('lifetime');return false;" style="display:inline-block;background:transparent;color:#1a1a1a;border:1.5px solid #6c63ff;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;">Acquista Una Tantum</a>
+        </div>
       </div>
       <div style="font-size:11px;color:#666;margin:6px 2px 0;">Formati supportati: MP3 &middot; M4A &middot; WAV &middot; FLAC &middot; AAC &middot; AIFF</div>
 
@@ -1333,6 +1341,48 @@ async function authSendOtp() {
   }
 }
 
+// Aggiorna stato del tab Converti in base a free_exhausted
+// (utente loggato + plan=free + conversions_remaining=0 → blocca)
+function _updateConvertTabState(){
+  var loggedIn = !!localStorage.getItem('rephase_session');
+  var plan = window._userPlan || 'free';
+  var remaining = (typeof window._userConversionsRemaining === 'number') ? window._userConversionsRemaining : null;
+  var freeExhausted = loggedIn && plan === 'free' && remaining === 0;
+
+  window._convertBlocked = freeExhausted;
+
+  var dropArea = document.getElementById('drop-area-convert');
+  var fileInput = document.getElementById('file-convert');
+  var blockedMsg = document.getElementById('convert-blocked-msg');
+  var formatBtns = document.querySelectorAll('.format-btn');
+
+  if (freeExhausted) {
+    if (dropArea) {
+      dropArea.style.opacity = '0.4';
+      dropArea.style.cursor = 'not-allowed';
+      dropArea.style.pointerEvents = 'none';
+    }
+    if (fileInput) fileInput.disabled = true;
+    if (blockedMsg) blockedMsg.style.display = '';
+    formatBtns.forEach(function(b){
+      b.style.opacity = '0.4';
+      b.style.pointerEvents = 'none';
+    });
+  } else {
+    if (dropArea) {
+      dropArea.style.opacity = '';
+      dropArea.style.cursor = '';
+      dropArea.style.pointerEvents = '';
+    }
+    if (fileInput) fileInput.disabled = false;
+    if (blockedMsg) blockedMsg.style.display = 'none';
+    formatBtns.forEach(function(b){
+      b.style.opacity = '';
+      b.style.pointerEvents = '';
+    });
+  }
+}
+
 // Formatta una data ISO in GG/MM/AAAA
 function _formatDateIT(iso){
   if (!iso) return '';
@@ -1415,6 +1465,8 @@ function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd, 
   window._userUsername = username || null;
   // Aggiorna anche la auth-bar inline (badge piano)
   if (typeof _renderAuthBar === 'function') _renderAuthBar();
+  // Aggiorna stato del tab Converti (blocco free_exhausted)
+  _updateConvertTabState();
 
   // Etichetta e colore badge per tipo piano
   var planLabels = {
