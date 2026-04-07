@@ -22,7 +22,12 @@ nav { background: #d0d0d0; border-bottom: 0.5px solid #b8b8b8; padding: 0 32px; 
 .tab.active { color: #1e8c3a; background: #d8d8d8; border-bottom: 3px solid #34c759; font-weight: 600; }
 .tab-content { display: none; padding: 24px; }
 .tab-content.active { display: block; }
-.drop-area { border: 1.5px dashed #aaa; border-radius: 12px; padding: 40px 24px; text-align: center; background: #e0e0e0; cursor: pointer; transition: all .2s; }
+@keyframes pulse-btn { 0%, 100% { background-color: #34c759; } 50% { background-color: #00a832; } }
+.pulse-btn { animation: pulse-btn 0.8s ease-in-out infinite !important; }
+@keyframes pulse-border { 0%, 100% { border-color: transparent; box-shadow: none; } 50% { border-color: #00a832; box-shadow: 0 0 12px 4px rgba(0,168,50,0.8); } }
+.drop-area { border: 1.5px dashed #aaa; border-radius: 12px; padding: 40px 24px; text-align: center; background: #e0e0e0; cursor: pointer; transition: background .2s, border-color .2s, border-style .2s, opacity .2s; }
+.drop-area.locked-pulse { animation: pulse-border 1.2s ease-in-out infinite; transition: none; }
+.drop-area.locked-pulse:hover { animation: none; border-color: #34c759; }
 .drop-area:hover, .drop-area.drag-over { border-color: #1e8c3a; background: #d8eed8; border-style: solid; }
 .drop-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
 .drop-sub { font-size: 13px; color: #444; }
@@ -242,6 +247,11 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 <body ondragover="event.preventDefault()" ondrop="event.preventDefault()">
 <nav>
   <div class="logo">re<span>phase</span></div>
+  <div id="nav-auth" style="display:flex;align-items:center;gap:10px;">
+    <!-- Loggato: badge piano + Esci (unico stato visibile nel nav) -->
+    <span id="nav-plan-badge" style="display:none;font-size:11px;font-weight:700;padding:4px 11px;border-radius:980px;color:#fff;"></span>
+    <button id="logout-btn" onclick="doLogout()" style="display:none;background:none;border:1px solid #888;border-radius:8px;padding:5px 14px;font-size:12px;font-weight:600;color:#555;cursor:pointer;">Esci</button>
+  </div>
 </nav>
 <div class="hero">
   <div class="hero-tag">Certificazione 432 Hz</div>
@@ -249,11 +259,57 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   <div class="hero-sub">Verifica e converti i tuoi brani a 432 Hz.<br>Con misura reale, non con promesse.</div>
   <div class="hero-slogan">"Out of phase? Get <span style="font-weight:700;font-style:normal;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span>"</div>
 </div>
+<!-- CTA onboarding — visibile solo prima dell'accettazione T&C / login -->
+<div id="onboard-cta" style="display:none;text-align:center;padding:0 24px 36px;">
+  <button onclick="openAuthModal()" style="background:transparent;color:#1a1a1a;border:1.5px solid #888;border-radius:980px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;">Hai già un account? Accedi</button>
+  <div style="font-size:13px;color:#666;margin-top:12px;">Nuovo utente? Scegli un piano qui sotto per iniziare</div>
+</div>
+
+<!-- Modal centrata: Signup Free (con T&C + Privacy) -->
+<div id="signup-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9998;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeSignupModal()">
+  <div style="background:#fff;border-radius:12px;padding:32px;max-width:480px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.25);font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+    <div id="signup-title" style="font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">Inizia con rephase</div>
+    <div id="signup-subtitle" style="font-size:14px;color:#666;margin-bottom:18px;">Verifica illimitata + 2 conversioni gratuite</div>
+    <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-bottom:18px;">
+      <input type="checkbox" id="signup-tc" onchange="_signupUpdateBtn()"
+             style="width:22px;height:22px;min-width:22px;min-height:22px;margin-top:2px;accent-color:#34c759;cursor:pointer;flex-shrink:0;">
+      <span style="font-size:16px;line-height:1.6;color:#1a1a1a;">
+        Ho letto e accetto i
+        <a href="/termini" target="_blank" style="color:#34c759;font-weight:600;text-decoration:underline;">Termini e Condizioni</a>
+        e la
+        <a href="/privacy" target="_blank" style="color:#34c759;font-weight:600;text-decoration:underline;">Privacy Policy</a>
+      </span>
+    </label>
+    <input type="email" id="signup-email" placeholder="tua@email.com" autocomplete="email"
+           oninput="_signupUpdateBtn()"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();_signupSubmit();}"
+           style="width:100%;padding:13px 14px;border:1px solid #ccc;border-radius:8px;font-size:15px;background:#fff;box-sizing:border-box;">
+    <!-- Opzioni rinnovo (visibili solo per piano Pro) -->
+    <div id="signup-renewal-block" style="display:none;margin-top:16px;padding:14px;background:#f8f8f8;border-radius:8px;">
+      <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:10px;">Opzioni di rinnovo</div>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:10px;">
+        <input type="radio" name="signup-renewal" id="signup-autorenew-on" checked onchange="_signupRenewalChange(true)"
+               style="width:18px;height:18px;min-width:18px;min-height:18px;margin-top:2px;accent-color:#34c759;cursor:pointer;flex-shrink:0;">
+        <span style="font-size:14px;line-height:1.5;color:#1a1a1a;"><strong>Rinnovo automatico</strong><br><span style="font-size:13px;color:#555;">Rinnova automaticamente alla scadenza</span></span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+        <input type="radio" name="signup-renewal" id="signup-autorenew-off" onchange="_signupRenewalChange(false)"
+               style="width:18px;height:18px;min-width:18px;min-height:18px;margin-top:2px;accent-color:#34c759;cursor:pointer;flex-shrink:0;">
+        <span style="font-size:14px;line-height:1.5;color:#1a1a1a;"><strong>Disdici alla scadenza</strong><br><span style="font-size:13px;color:#555;">Non rinnovare — accesso fino alla scadenza poi stop</span></span>
+      </label>
+    </div>
+    <button id="signup-btn" onclick="_signupSubmit()" disabled
+            style="width:100%;margin-top:14px;background:#ccc;color:#888;border:none;border-radius:8px;padding:14px;font-size:15px;font-weight:700;cursor:not-allowed;">Ricevi il codice</button>
+    <div id="signup-err" style="display:none;color:#c0392b;font-size:13px;margin-top:10px;font-weight:600;"></div>
+    <button onclick="closeSignupModal()" style="width:100%;margin-top:10px;padding:10px;background:none;border:1px solid #ddd;border-radius:8px;font-size:14px;color:#555;cursor:pointer;">Annulla</button>
+  </div>
+</div>
+
 <div class="main">
-  <div class="card" id="verifica">
+  <div class="card" id="verifica" style="display:none">
     <div class="tabs">
       <div class="tab active" onclick="switchTab('verify')">Verifica</div>
-      <div class="tab" onclick="switchTab('convert')" id="tab-convert-btn">Converti a 432 Hz</div>
+      <div class="tab" onclick="if(_guardConvertTabClick())switchTab('convert')" id="tab-convert-btn">Converti a 432 Hz</div>
     </div>
     <div class="tab-content active" id="tab-verify">
       <div class="analysis-mode-toggle">
@@ -261,7 +317,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <button class="mode-btn" id="mode-btn-full" onclick="setAnalysisMode('full')" title="Ogni secondo del brano viene analizzato">Analisi precisa</button>
       </div>
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" id="drop-area-verify" onclick="document.getElementById('file-verify').click()">
+      <div class="drop-area" id="drop-area-verify" onclick="if(typeof _isQuotaExhausted==='function' && _isQuotaExhausted()){_forceShowPricingAndScroll();return;}document.getElementById('file-verify').click()">
         <div class="drop-title">Trascina il tuo file audio</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
@@ -458,15 +514,15 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   <div class="pricing" id="prezzi">
     <div class="plan">
       <div class="plan-name">Free</div>
-      <div class="plan-price">CHF 0 <span>— una tantum</span></div>
+      <div class="plan-price">CHF 0.-</div>
       <div class="plan-desc">Per iniziare a provare</div>
       <ul class="plan-features">
-        <li>5 verifiche</li>
-        <li>2 conversioni</li>
+        <li>Verifica illimitata gratuita per tutti</li>
+        <li>2 conversioni gratuite</li>
         <li>MP3 in uscita</li>
         <li>Report base</li>
       </ul>
-      <button onclick="startFreeSignup()" class="plan-cta">Verifica gratis</button>
+      <button onclick="openSignupModal('free')" class="plan-cta">Prova gratuitamente</button>
     </div>
     <div class="plan featured">
       <div class="plan-badge">Più popolare</div>
@@ -476,7 +532,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="billing-opt" onclick="setBilling('annual',this)">Annuale</div>
       </div>
       <div class="plan-price"><span id="pro-price-val">CHF 4.95</span><span id="pro-period"> /mese</span><span class="price-save" id="pro-save">&minus;17%</span></div>
-      <div class="price-equiv" id="pro-equiv">CHF 4.08/mese in media &middot; risparmi CHF 10.40</div>
+      <div class="price-equiv" id="pro-equiv">CHF 4.10/mese in media &middot; risparmi CHF 10.40</div>
       <div class="plan-desc">Per gli appassionati</div>
       <ul class="plan-features">
         <li>Verifiche illimitate</li>
@@ -486,11 +542,11 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <li>Conversione batch</li>
         <li id="feat-blockchain" style="display:none;">🔒 Certificazione blockchain — documento legale con SHA256, timestamp e anchor Bitcoin</li>
       </ul>
-      <button id="checkout-btn" onclick="startCheckout()" class="plan-cta">Abbonati ora</button>
+      <button id="checkout-btn" onclick="openSignupModal('pro')" class="plan-cta">Abbonati ora</button>
     </div>
     <div class="plan">
       <div class="plan-name">Una Tantum</div>
-      <div class="plan-price">CHF 199 <span>— pagamento unico</span></div>
+      <div class="plan-price">CHF 199.- <span>— pagamento unico</span></div>
       <div class="plan-desc">Per chi vuole tutto, per sempre</div>
       <ul class="plan-features">
         <li>Verifiche illimitate</li>
@@ -500,8 +556,29 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <li>Conversione batch</li>
         <li>Nessun rinnovo — accesso a vita</li>
       </ul>
-      <button onclick="startCheckoutLifetime()" class="plan-cta">Acquista ora</button>
+      <button onclick="openSignupModal('lifetime')" class="plan-cta">Acquista ora</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal Termini e Condizioni -->
+<div id="terms-modal" onclick="if(event.target===this)closeTermsModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#fff;border-radius:12px;padding:32px;max-width:480px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+    <div style="font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">Conferma acquisto</div>
+    <div style="font-size:14px;color:#666;margin-bottom:18px;">Prima di procedere al pagamento, accetta i nostri termini.</div>
+    <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-bottom:18px;">
+      <input type="checkbox" id="terms-checkbox" onchange="_termsModalUpdateBtn()"
+             style="width:22px;height:22px;min-width:22px;min-height:22px;margin-top:2px;accent-color:#34c759;cursor:pointer;flex-shrink:0;">
+      <span style="font-size:16px;line-height:1.6;color:#1a1a1a;">
+        Ho letto e accetto i
+        <a href="/termini" target="_blank" style="color:#34c759;font-weight:600;text-decoration:underline;">Termini e Condizioni</a>
+        e la
+        <a href="/privacy" target="_blank" style="color:#34c759;font-weight:600;text-decoration:underline;">Privacy Policy</a>
+      </span>
+    </label>
+    <button id="terms-confirm-btn" disabled onclick="confirmCheckout()"
+            style="width:100%;padding:14px;background:#ccc;color:#888;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:not-allowed;margin-bottom:10px;">Continua al pagamento</button>
+    <button onclick="closeTermsModal()" style="width:100%;padding:10px;background:none;border:1px solid #ddd;border-radius:8px;font-size:14px;color:#555;cursor:pointer;">Annulla</button>
   </div>
 </div>
 
@@ -513,7 +590,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
       <p style="font-size:15px;color:#1a1a1a;margin:12px 0 16px;font-weight:500;">Inserisci la tua email per registrarti o accedere.</p>
       <input type="email" id="auth-email" placeholder="nome@esempio.com" style="width:100%;padding:13px;border:2px solid #bbb;border-radius:10px;font-size:16px;color:#1a1a1a;outline:none;-webkit-appearance:none;">
       <div id="auth-email-err" style="color:#ff3b30;font-size:12px;margin-top:6px;display:none;"></div>
-      <button id="auth-send-btn" onclick="authSendOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Invia codice</button>
+      <button id="auth-send-btn" onclick="authSendOtp()" style="width:100%;margin-top:14px;padding:12px;background:#34c759;color:#1a1a1a;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Ricevi il codice</button>
     </div>
     <div id="auth-step-otp" style="display:none;">
       <p style="font-size:14px;color:#333;margin:12px 0 8px;">Inserisci il codice a 6 cifre inviato a:</p>
@@ -530,41 +607,58 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 <footer>
   <div class="footer-logo">re<span>phase</span></div>
   <div class="footer-text">Out of phase? Get <span style="font-weight:700;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span><br>Server in Svizzera. File cancellati entro 60 secondi.<br>© 2026 Rephase. Tutti i diritti riservati.</div>
+  <div style="margin-top:12px;font-size:14px;"><a href="/termini" style="color:#34c759;font-weight:600;text-decoration:underline;">Termini e Condizioni</a> &middot; <a href="/privacy" style="color:#34c759;font-weight:600;text-decoration:underline;">Privacy Policy</a></div>
 </footer>
 <script>
 const API="";
 let _isGuest = false;
 let _appUnlocked = false;
 
+function _showAppUI(){
+  var card = document.getElementById('verifica');
+  if(card) card.style.display = '';
+  var tv = document.getElementById('tab-verify');
+  if(tv){ tv.classList.add('active'); tv.style.display = 'block'; }
+  var tc = document.getElementById('tab-convert');
+  if(tc){ tc.classList.remove('active'); tc.style.display = ''; }
+}
+
+function doLogout(){
+  localStorage.removeItem('rephase_session');
+  localStorage.removeItem('rephase_email');
+  location.reload();
+}
+
 function _lockApp(){
-  // Drop area
-  var da1 = document.getElementById('drop-area-verify');
+  // Guest mode: la tab Verifica resta usabile, blocca solo il lato Converti.
+  // L'auth bar inline (sopra le tab) gestisce la richiesta email.
+  console.log("_lockApp chiamata (guest mode)");
+  var logoutBtn = document.getElementById('logout-btn');
+  if(logoutBtn) logoutBtn.style.display = 'none';
+  // Blocca solo drop-area-convert e file-convert
   var da2 = document.getElementById('drop-area-convert');
-  if(da1){ da1.style.pointerEvents='none'; da1.style.opacity='0.4'; }
-  if(da2){ da2.style.pointerEvents='none'; da2.style.opacity='0.4'; }
-  // File input
-  var fi1 = document.getElementById('file-verify');
+  if(da2){
+    da2.classList.add('locked-pulse');
+    da2._origOnclick = da2.onclick;
+    da2.onclick = function(){ _guardConvertTabClick(); };
+  }
   var fi2 = document.getElementById('file-convert');
-  if(fi1) fi1.disabled=true;
-  if(fi2) fi2.disabled=true;
-  // Tab Converti
+  if(fi2) fi2.disabled = true;
+  // Tab Converti: visibile ma "spenta" — il click viene intercettato da _guardConvertTabClick
   var tabConvert = document.getElementById('tab-convert-btn');
-  if(tabConvert){ tabConvert.style.pointerEvents='none'; tabConvert.style.opacity='0.4'; }
-  // Bottoni analisi veloce e precisa
-  var modeQuick = document.getElementById('mode-btn-quick');
-  var modeFull = document.getElementById('mode-btn-full');
-  if(modeQuick){ modeQuick.style.pointerEvents='none'; modeQuick.style.opacity='0.4'; }
-  if(modeFull){ modeFull.style.pointerEvents='none'; modeFull.style.opacity='0.4'; }
+  if(tabConvert){ tabConvert.style.opacity = '0.5'; }
 }
 
 function _unlockApp(){
   _appUnlocked = true;
+  _showAppUI();
+  _renderNavAuth();
   if (localStorage.getItem('rephase_session')) _hidePricing();
   // Drop area
   var da1 = document.getElementById('drop-area-verify');
   var da2 = document.getElementById('drop-area-convert');
-  if(da1){ da1.style.pointerEvents=''; da1.style.opacity=''; }
-  if(da2){ da2.style.pointerEvents=''; da2.style.opacity=''; }
+  if(da1){ da1.classList.remove('locked-pulse'); if(da1._origOnclick) da1.onclick = da1._origOnclick; }
+  if(da2){ da2.classList.remove('locked-pulse'); if(da2._origOnclick) da2.onclick = da2._origOnclick; }
   // File input
   var fi1 = document.getElementById('file-verify');
   var fi2 = document.getElementById('file-convert');
@@ -1159,6 +1253,7 @@ function closeFreeChoiceModal(){
 }
 function chooseTryNow(){
   closeFreeChoiceModal();
+  _showAppUI();
   _unlockApp();
   _isGuest = true;
   setTimeout(function(){
@@ -1170,11 +1265,12 @@ function chooseTryNow(){
     if(formatSelect) formatSelect.style.display='none';
     var btnFull = document.getElementById('mode-btn-full');
     if(btnFull) btnFull.style.display='none';
+    var da1 = document.getElementById('drop-area-verify');
+    if(da1) da1.classList.add('locked-pulse');
   }, 100);
 }
 function chooseRegister(){
   closeFreeChoiceModal();
-  _unlockApp();
   openAuthModal();
 }
 
@@ -1188,7 +1284,10 @@ function openAuthModal() {
   document.getElementById('auth-email-err').style.display = 'none';
   document.getElementById('auth-otp-err').style.display = 'none';
 }
-function closeAuthModal() { document.getElementById('auth-modal').style.display = 'none'; }
+function closeAuthModal() {
+  document.getElementById('auth-modal').style.display = 'none';
+  if (!localStorage.getItem('rephase_session')) { _lockApp(); }
+}
 
 async function authSendOtp() {
   const email = document.getElementById('auth-email').value.trim();
@@ -1203,7 +1302,26 @@ async function authSendOtp() {
       body: JSON.stringify({ email })
     });
     const data = await res.json();
-    if (!data.success) { errEl.textContent = data.error; errEl.style.display = 'block'; return; }
+    if (!data.success) {
+      // Caso speciale: utente Free con conversioni esaurite
+      if (data.error === 'free_exhausted') {
+        // Salva email per pre-fill nel signup modal (evita di richiederla due volte)
+        var _exhEmail = (email || '').replace(/'/g, "\\'");
+        errEl.innerHTML =
+          '<div style="color:#c0392b;font-weight:700;margin-bottom:10px;">Hai esaurito le conversioni gratuite</div>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">' +
+            '<a href="#" onclick="event.preventDefault();closeAuthModal();openSignupModal(\'pro\',\'' + _exhEmail + '\');return false;" style="display:inline-block;background:#34c759;color:#1a1a1a;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;">Abbonati a Pro</a>' +
+            '<a href="#" onclick="event.preventDefault();closeAuthModal();openSignupModal(\'lifetime\',\'' + _exhEmail + '\');return false;" style="display:inline-block;background:transparent;color:#1a1a1a;border:1.5px solid #6c63ff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;">Acquista Una Tantum</a>' +
+          '</div>';
+        errEl.style.display = 'block';
+        // NON mostrare il campo OTP
+        document.getElementById('auth-step-otp').style.display = 'none';
+        return;
+      }
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+      return;
+    }
     document.getElementById('auth-step-email').style.display = 'none';
     document.getElementById('auth-step-otp').style.display = 'block';
     document.getElementById('auth-otp-email').textContent = email;
@@ -1211,11 +1329,98 @@ async function authSendOtp() {
   } catch(e) {
     errEl.textContent = 'Errore di connessione'; errEl.style.display = 'block';
   } finally {
-    btn.disabled = false; btn.textContent = 'Invia codice';
+    btn.disabled = false; btn.textContent = 'Ricevi il codice';
   }
 }
 
-function _updateUserUI(email, conversionsRemaining) {
+// Formatta una data ISO in GG/MM/AAAA
+function _formatDateIT(iso){
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var dd = String(d.getDate()).padStart(2,'0');
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var yy = d.getFullYear();
+    return dd + '/' + mm + '/' + yy;
+  } catch(e) { return ''; }
+}
+
+// ── Auth nav: badge piano + Esci (visibili solo se loggato) ─────────────────
+function _renderNavAuth(){
+  var planBadge = document.getElementById('nav-plan-badge');
+  var logoutBtn = document.getElementById('logout-btn');
+  if (!planBadge || !logoutBtn) return;
+
+  var session = localStorage.getItem('rephase_session');
+  var email   = localStorage.getItem('rephase_email');
+
+  if (session && email) {
+    var plan = window._userPlan || 'free';
+    var subEnd = window._userSubscriptionEnd || null;
+    var planLabels = {
+      'pro_monthly': 'PRO Mensile',
+      'pro_annual':  'PRO Annuale',
+      'lifetime':    'UNA TANTUM',
+      'free':        'FREE'
+    };
+    var label = planLabels[plan] || 'FREE';
+    // Aggiungi data scadenza solo per pro_monthly e pro_annual
+    if ((plan === 'pro_monthly' || plan === 'pro_annual') && subEnd) {
+      var formatted = _formatDateIT(subEnd);
+      if (formatted) label += ' \u00B7 scade ' + formatted;
+    }
+    var color = (plan === 'lifetime') ? '#6c63ff'
+              : (plan === 'free')     ? '#888'
+                                      : '#34c759';
+    planBadge.textContent = label;
+    planBadge.style.background = color;
+    planBadge.title = email;
+    planBadge.style.display = '';
+    logoutBtn.style.display = '';
+  } else {
+    planBadge.style.display = 'none';
+    logoutBtn.style.display = 'none';
+  }
+}
+
+// Click sulla tab Converti: se guest, apre direttamente il modal OTP
+function _guardConvertTabClick(){
+  if (!localStorage.getItem('rephase_session')) {
+    openAuthModal();
+    return false;
+  }
+  return true;
+}
+
+// Compatibilità: vecchio nome usato altrove nel codice
+function _renderAuthBar(){ _renderNavAuth(); }
+
+var _updateUserUI_timer = null;
+function _updateUserUI(email, conversionsRemaining, plan, subscriptionEnd) {
+  if(_updateUserUI_timer) clearTimeout(_updateUserUI_timer);
+  _updateUserUI_timer = setTimeout(function(){ _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd); }, 100);
+}
+function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd) {
+  console.log("_updateUserUI chiamata", email, conversionsRemaining, plan, subscriptionEnd);
+  plan = plan || "free";
+  var isPro = (plan !== "free");
+  // Stato globale per gli handler drag&drop e per il badge nav
+  window._userPlan = plan;
+  window._userConversionsRemaining = conversionsRemaining;
+  window._userSubscriptionEnd = subscriptionEnd || null;
+  // Aggiorna anche la auth-bar inline (badge piano)
+  if (typeof _renderAuthBar === 'function') _renderAuthBar();
+
+  // Etichetta e colore badge per tipo piano
+  var planLabels = {
+    'pro_monthly': 'PRO Mensile',
+    'pro_annual':  'PRO Annuale',
+    'lifetime':    'Una Tantum'
+  };
+  var planBadge = planLabels[plan] || 'PRO';
+  var badgeColor = (plan === 'lifetime') ? '#6c63ff' : '#34c759';
+
   // Nasconde il box verde guest-invito
   var guestInvito = document.getElementById('guest-invito');
   if (guestInvito) guestInvito.style.display = 'none';
@@ -1226,45 +1431,123 @@ function _updateUserUI(email, conversionsRemaining) {
 
   var box = document.createElement('div');
   box.id = 'user-quota-box';
-  box.style.cssText = 'text-align:center;margin:20px 0;padding:18px;background:#f0faf3;border-radius:12px;border:1.5px solid #34c759;';
 
-  var canConvert = conversionsRemaining > 0;
-  var btnStyle = canConvert
-    ? 'background:#34c759;color:#1a1a1a;cursor:pointer;'
-    : 'background:#ccc;color:#888;cursor:not-allowed;';
+  if (isPro) {
+    // ── UI Pro / Lifetime ───────────────────────────────────────
+    box.style.cssText = 'text-align:center;margin:20px 0;padding:18px;background:linear-gradient(135deg,#f0faf3,#e8f5e9);border-radius:12px;border:1.5px solid ' + badgeColor + ';';
+    box.innerHTML =
+      '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + email + '</div>' +
+      '<div style="display:inline-block;background:' + badgeColor + ';color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:980px;margin-bottom:10px;">' + planBadge + '</div>' +
+      '<div style="font-size:13px;font-weight:700;color:#1e8c3a;margin-bottom:12px;">Conversioni illimitate</div>' +
+      '<button id="user-convert-btn" style="border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;background:#34c759;color:#1a1a1a;cursor:pointer;">' +
+        'Converti a 432 Hz \u2192' +
+      '</button>' +
+      '<div style="margin-top:8px;font-size:16px;font-weight:600;color:#333;">' +
+        '<span style="margin-right:14px;">MP3 \u2713</span>' +
+        '<span>M4A \u2713</span>' +
+      '</div>';
+  } else {
+    // ── UI Free ─────────────────────────────────────────────────
+    box.style.cssText = 'text-align:center;margin:20px 0;padding:18px;background:#f0faf3;border-radius:12px;border:1.5px solid #34c759;';
+    var canConvert = conversionsRemaining > 0;
+    var btnStyle = canConvert
+      ? 'background:#34c759;color:#1a1a1a;cursor:pointer;'
+      : 'background:#ccc;color:#888;cursor:not-allowed;';
 
-  box.innerHTML =
-    '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + email + '</div>' +
-    '<div style="font-size:13px;color:#555;margin-bottom:12px;">Conversioni disponibili: ' + conversionsRemaining + ' / 2</div>' +
-    '<button id="user-convert-btn" ' + (canConvert ? '' : 'disabled') + ' style="border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;' + btnStyle + '">' +
-      (canConvert ? 'Converti a 432 Hz \u2192' : 'Conversioni esaurite') +
-    '</button>' +
-    '<div style="margin-top:10px;font-size:12px;color:#888;">' +
-      '<span style="margin-right:12px;">MP3 \u2713</span>' +
-      '<span style="opacity:0.6;">\uD83D\uDD12 M4A \u2014 Pro</span>' +
-    '</div>';
-
-  var resultVerify = document.getElementById('result-verify');
-  if (resultVerify) {
-    resultVerify.appendChild(box);
+    box.innerHTML =
+      '<div style="font-size:15px;font-weight:600;color:#1a1a1a;margin-bottom:4px;">Benvenuto, ' + email + '</div>' +
+      '<div style="display:inline-block;background:#888;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:980px;margin-bottom:10px;">FREE</div>' +
+      '<div style="font-size:13px;font-weight:700;color:#555;margin-bottom:12px;">Conversioni disponibili: ' + conversionsRemaining + ' / 2</div>' +
+      '<button id="user-convert-btn" ' + (canConvert ? '' : 'disabled') + ' style="border:none;border-radius:980px;padding:10px 28px;font-size:14px;font-weight:700;' + btnStyle + '">' +
+        'Converti a 432 Hz \u2192' +
+      '</button>' +
+      (canConvert ? '' :
+        '<div style="margin-top:10px;font-size:13px;color:#c0392b;font-weight:700;">Hai esaurito le conversioni gratuite</div>' +
+        '<div style="margin-top:6px;font-size:13px;color:#1e8c3a;font-weight:600;"><a href="#" onclick="event.preventDefault();openSignupModal(\'pro\');return false;" style="color:#1e8c3a;text-decoration:underline;cursor:pointer;">Passa a Pro per conversioni illimitate</a></div>'
+      ) +
+      '<div style="margin-top:8px;font-size:16px;font-weight:600;color:#333;">' +
+        '<span style="margin-right:14px;">MP3 \u2713</span>' +
+        '<span style="color:#888;">\uD83D\uDD12 M4A \u2014 Pro</span>' +
+      '</div>';
   }
 
-  // Pulse sul tab Converti se ha conversioni disponibili
+  var card = document.getElementById('verifica');
+  var tabs = card ? card.querySelector('.tabs') : null;
+  if (card && tabs) {
+    tabs.after(box);
+  }
+
+  // Tab Converti e Analisi precisa: visibili solo per Pro
   var tabConvert = document.getElementById('tab-convert-btn');
-  if (tabConvert) {
-    if (canConvert) { tabConvert.classList.add('pulse-glow'); }
-    else { tabConvert.classList.remove('pulse-glow'); }
+  var btnFull = document.getElementById('mode-btn-full');
+  if (isPro) {
+    if (tabConvert) tabConvert.style.display = '';
+    if (btnFull) btnFull.style.display = '';
+  } else {
+    if (tabConvert) tabConvert.style.display = 'none';
+    if (btnFull) btnFull.style.display = 'none';
+    // Pulse sul tab Converti se ha conversioni disponibili (Free)
+    if (tabConvert && conversionsRemaining > 0) tabConvert.classList.add('pulse-glow');
+    else if (tabConvert) tabConvert.classList.remove('pulse-glow');
   }
 
-  // Aggiorna i format-btn nella tab Converti per utenti Free loggati
-  _setupFreeFormatButtons(canConvert);
+  // Format buttons: Pro sblocca tutto, Free blocca M4A
+  if (isPro) {
+    _setupProFormatButtons();
+  } else {
+    _setupFreeFormatButtons(conversionsRemaining > 0);
+  }
 
-  if (canConvert) {
+  // Click sul bottone converti → apre tab conversione
+  var canConvertAny = isPro || (conversionsRemaining > 0);
+  if (canConvertAny) {
     setTimeout(function() {
       var btn = document.getElementById('user-convert-btn');
-      if (btn) btn.onclick = function() { switchTab('convert'); };
+      if (btn) btn.onclick = function() {
+        this.classList.remove('pulse-btn');
+        var tabConvert = document.getElementById('tab-convert');
+        var tabVerify = document.getElementById('tab-verify');
+        if(tabVerify) { tabVerify.style.display='none'; tabVerify.classList.remove('active'); }
+        if(tabConvert) { tabConvert.style.display='block'; tabConvert.classList.add('active'); }
+        document.querySelectorAll('.tabs .tab').forEach(function(el,i){
+          el.classList.toggle('active', i===1);
+        });
+        var tcBtn = document.getElementById('tab-convert-btn');
+        if(tcBtn) tcBtn.style.display = '';
+        console.log("pendingVerifyFile:", _pendingVerifyFile);
+        if(_pendingVerifyFile) {
+          startConvertWithFile(_pendingVerifyFile);
+        }
+      };
     }, 0);
   }
+
+  // Pulse sulla drop area per invitare a trascinare un file
+  var da = document.getElementById('drop-area-verify');
+  if(da) da.classList.add('locked-pulse');
+
+  // Pulse anche sulla drop-area-convert se l'utente può ancora convertire
+  // (Pro/Lifetime sempre, Free solo finché ha conversioni rimaste)
+  var daConv = document.getElementById('drop-area-convert');
+  if (daConv) {
+    var canConvertMore = isPro || (conversionsRemaining > 0);
+    if (canConvertMore) daConv.classList.add('locked-pulse');
+    else daConv.classList.remove('locked-pulse');
+  }
+}
+
+function _setupProFormatButtons() {
+  var formatBtns = document.querySelectorAll('.format-btn');
+  if (formatBtns.length < 2) return;
+  var mp3Btn = formatBtns[0];
+  var m4aBtn = formatBtns[1];
+  // Sblocca M4A per Pro
+  m4aBtn.textContent = 'M4A';
+  m4aBtn.style.opacity = '1';
+  m4aBtn.style.cursor = 'pointer';
+  m4aBtn.onclick = function() { selectFormat('m4a', m4aBtn); };
+  mp3Btn.classList.remove('pulse-glow');
+  m4aBtn.classList.remove('pulse-glow');
 }
 
 function _setupFreeFormatButtons(canConvert) {
@@ -1307,7 +1590,7 @@ async function _refreshQuotaAfterConvert() {
     });
     if (res.ok) {
       var data = await res.json();
-      _updateUserUI(data.email || email, data.conversions_remaining);
+      _updateUserUI(data.email || email, data.conversions_remaining, data.plan, data.subscription_end);
     }
   } catch(e) { console.warn('[auth] quota refresh error', e); }
 }
@@ -1323,7 +1606,7 @@ async function _loadUserQuota() {
     });
     if (res.ok) {
       var data = await res.json();
-      _updateUserUI(data.email || email, data.conversions_remaining);
+      _updateUserUI(data.email || email, data.conversions_remaining, data.plan, data.subscription_end);
     }
   } catch(e) { console.warn('[auth] quota load error', e); }
 }
@@ -1344,17 +1627,28 @@ async function authVerifyOtp() {
     const data = await res.json();
     if (!data.success) { errEl.textContent = data.error; errEl.style.display = 'block'; return; }
     localStorage.setItem('rephase_session', data.session_token);
-    console.log('[rephase] login ok, token:', data.session_token);
-    console.log('[rephase] chiamo /auth/conversions...');
     localStorage.setItem('rephase_email', data.email);
+    // Login implica accettazione T&C (se non già salvata)
+    localStorage.setItem('rephase_tc_accepted', '1');
     closeAuthModal();
+    _revealAppShell();
+    _unlockApp();
     // Fetch quota conversioni e aggiorna UI
     fetch(API + '/auth/conversions', {
       headers: { 'Authorization': 'Bearer ' + data.session_token }
     })
-    .then(r => { console.log('[rephase] conversions response:', r.status); return r.json(); })
-    .then(d => { console.log('[rephase] conversions data:', d); _updateUserUI(d.email, d.conversions_remaining); })
+    .then(r => r.json())
+    .then(d => { _updateUserUI(d.email, d.conversions_remaining, d.plan, d.subscription_end); })
     .catch(e => console.error('[rephase] conversions error:', e));
+
+    // Se l'utente è entrato cliccando "Abbonati ora" o "Acquista ora", procedi al checkout
+    var pending = window._pendingPlan;
+    window._pendingPlan = null;
+    if (pending === 'pro') {
+      setTimeout(function(){ startCheckout(); }, 300);
+    } else if (pending === 'lifetime') {
+      setTimeout(function(){ startCheckoutLifetime(); }, 300);
+    }
 
   } catch(e) {
     errEl.textContent = 'Errore di connessione'; errEl.style.display = 'block';
@@ -1362,11 +1656,47 @@ async function authVerifyOtp() {
     btn.disabled = false; btn.textContent = 'Verifica';
   }
 }
+var _pendingCheckoutType = null;
+function openTermsModal(type){
+  _pendingCheckoutType = type;
+  var cb = document.getElementById('terms-checkbox');
+  if (cb) cb.checked = false;
+  _termsModalUpdateBtn();
+  document.getElementById('terms-modal').style.display = 'flex';
+}
+function _termsModalUpdateBtn(){
+  var btn = document.getElementById('terms-confirm-btn');
+  var cb  = document.getElementById('terms-checkbox');
+  if (!btn || !cb) return;
+  btn.disabled = !cb.checked;
+  if (cb.checked) {
+    btn.style.background = '#34c759';
+    btn.style.color = '#1a1a1a';
+    btn.style.cursor = 'pointer';
+  } else {
+    btn.style.background = '#ccc';
+    btn.style.color = '#888';
+    btn.style.cursor = 'not-allowed';
+  }
+}
+function closeTermsModal(){
+  document.getElementById('terms-modal').style.display = 'none';
+  _pendingCheckoutType = null;
+}
+function confirmCheckout(){
+  closeTermsModal();
+  if(_pendingCheckoutType === 'lifetime') startCheckoutLifetime();
+  else startCheckout();
+}
+
 async function startCheckoutLifetime(){
   try {
+    var _chkHeaders = {'Content-Type': 'application/json'};
+    var _chkToken = localStorage.getItem('rephase_session');
+    if (_chkToken) _chkHeaders['Authorization'] = 'Bearer ' + _chkToken;
     const res = await fetch(API + '/create-checkout-session', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: _chkHeaders,
       body: JSON.stringify({plan: 'lifetime'})
     });
     const data = await res.json();
@@ -1383,10 +1713,14 @@ async function startCheckout(){
   btn.textContent = 'Caricamento...';
   try {
     const plan = _isPlanProAnnual ? 'annual' : 'monthly';
+    var _chkHeaders2 = {'Content-Type': 'application/json'};
+    var _chkToken2 = localStorage.getItem('rephase_session');
+    if (_chkToken2) _chkHeaders2['Authorization'] = 'Bearer ' + _chkToken2;
+    var _autoRenew = (window._pendingAutoRenew !== false); // default true
     const res = await fetch(API + '/create-checkout-session', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({plan})
+      headers: _chkHeaders2,
+      body: JSON.stringify({plan, auto_renew: _autoRenew})
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.detail || 'Errore server');
@@ -1401,7 +1735,7 @@ function setBilling(mode,el){
   el.parentNode.querySelectorAll('.billing-opt').forEach(o=>o.classList.remove('active'));
   el.classList.add('active');
   const annual=(mode==='annual');
-  document.getElementById('pro-price-val').textContent=annual?'CHF 49.00':'CHF 4.95';
+  document.getElementById('pro-price-val').textContent=annual?'CHF 49.-':'CHF 4.95';
   document.getElementById('pro-period').textContent=annual?' /anno':' /mese';
   document.getElementById('pro-save').style.display=annual?'inline-block':'none';
   document.getElementById('pro-equiv').style.display=annual?'block':'none';
@@ -1476,12 +1810,43 @@ function tubeError(msg) {
   st.className  = 'status visible';
   st.textContent = msg || 'Errore.';
 }
+// Mostra sezione piani e ci scrolla — bypassa il check session di _showPricing
+function _forceShowPricingAndScroll(){
+  var el = document.getElementById('prezzi');
+  if (el) {
+    el.style.display = '';
+    el.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  // Toast breve "Scegli un piano per continuare"
+  var existing = document.getElementById('quota-toast');
+  if (existing) existing.remove();
+  var toast = document.createElement('div');
+  toast.id = 'quota-toast';
+  toast.textContent = 'Scegli un piano per continuare';
+  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:12px 22px;border-radius:980px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.2);';
+  document.body.appendChild(toast);
+  setTimeout(function(){ if(toast.parentNode) toast.remove(); }, 3500);
+}
+
+// True se l'utente Free loggato ha esaurito le conversioni
+function _isQuotaExhausted(){
+  return window._userPlan === 'free' && window._userConversionsRemaining === 0;
+}
+
 ['drop-area-verify','drop-area-convert'].forEach(id=>{
   const el=document.getElementById(id);
-  el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
+  el.addEventListener('dragover',e=>{
+    e.preventDefault();
+    if (_isQuotaExhausted()) return; // niente highlight se quota esaurita
+    el.classList.add('drag-over');
+  });
   el.addEventListener('dragleave',e=>{if(!el.contains(e.relatedTarget))el.classList.remove('drag-over');});
   el.addEventListener('drop',e=>{
     e.preventDefault();el.classList.remove('drag-over');
+    if (_isQuotaExhausted()) {
+      _forceShowPricingAndScroll();
+      return;
+    }
     const file=e.dataTransfer.files[0];if(!file)return;
     const inputId=id==='drop-area-verify'?'file-verify':'file-convert';
     const dt=new DataTransfer();dt.items.add(file);
@@ -1929,6 +2294,9 @@ function _finalizeLiveChart(result) {
 document.getElementById('file-verify').addEventListener('change', async function() {
   const file = this.files[0];
   if (!file) return;
+  var da = document.getElementById('drop-area-verify');
+  if(da) da.classList.remove('locked-pulse');
+  setTimeout(function(){ var d = document.getElementById('drop-area-verify'); if(d) d.classList.add('locked-pulse'); }, 3000);
   _hidePricing();
 
   // Store for certificate generation
@@ -2090,6 +2458,10 @@ document.getElementById('file-verify').addEventListener('change', async function
         _pendingVerifyFile = file;
         if(!_isGuest) document.getElementById('cert-section').classList.remove('hidden');
         if(!_isGuest) renderSpectral(d, file.name, _verifyHash, _verifyTime);
+        var da = document.getElementById('drop-area-verify');
+        if(da) da.classList.add('locked-pulse');
+        var ucb = document.getElementById('user-convert-btn');
+        if(ucb) { ucb.classList.add('pulse-btn'); console.log("PULSE AGGIUNTO AL BOTTONE", ucb); }
       } else if (data.status === 'error') {
         _stopPoll();
         st.textContent = 'Errore: ' + (data.error || 'Errore sconosciuto');
@@ -2138,6 +2510,8 @@ document.getElementById('file-verify').addEventListener('change', async function
     uploadWrap.style.display = 'none'; wrap.style.display = 'none';
   };
   xhr.open('POST', API + '/analyze/start');
+  var _vToken = localStorage.getItem('rephase_session');
+  if (_vToken) xhr.setRequestHeader('Authorization', 'Bearer ' + _vToken);
   xhr.send(fd);
 });
 
@@ -2174,9 +2548,12 @@ async function _startConvertFromVerify(file, verifyJobId) {
   };
 
   try {
+    var _cvHeaders = {'Content-Type': 'application/json'};
+    var _cvToken = localStorage.getItem('rephase_session');
+    if (_cvToken) _cvHeaders['Authorization'] = 'Bearer ' + _cvToken;
     const res = await fetch(API + '/convert-from-verify', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: _cvHeaders,
       body: JSON.stringify({ verify_job_id: verifyJobId, format: fmt })
     });
     if (!res.ok) {
@@ -2238,6 +2615,10 @@ async function _startConvertFromVerify(file, verifyJobId) {
           document.getElementById('result-convert').classList.remove('hidden');
           _showPricing(); st.className = 'status';
           _refreshQuotaAfterConvert();
+          var da = document.getElementById('drop-area-verify');
+          if(da) da.classList.add('locked-pulse');
+          var ucb = document.getElementById('user-convert-btn');
+          if(ucb) { ucb.classList.add('pulse-btn'); console.log("PULSE AGGIUNTO AL BOTTONE (conv1)", ucb); }
 
         } else if (job.status === 'error') {
           clearInterval(pollInterval); _stopProcAnim();
@@ -2436,6 +2817,10 @@ document.getElementById("file-convert").addEventListener('change', function() {
           _showPricing();
           st.className = 'status';
           _refreshQuotaAfterConvert();
+          var da = document.getElementById('drop-area-verify');
+          if(da) da.classList.add('locked-pulse');
+          var ucb = document.getElementById('user-convert-btn');
+          if(ucb) { ucb.classList.add('pulse-btn'); console.log("PULSE AGGIUNTO AL BOTTONE (conv2)", ucb); }
 
         } else if (job.status === 'error') {
           clearInterval(pollInterval);
@@ -2465,6 +2850,8 @@ document.getElementById("file-convert").addEventListener('change', function() {
   };
 
   xhr.open('POST', API + '/convert?format=' + fmt);
+  var _cvToken3 = localStorage.getItem('rephase_session');
+  if (_cvToken3) xhr.setRequestHeader('Authorization', 'Bearer ' + _cvToken3);
   xhr.send(fd);
 });
 
@@ -2476,11 +2863,178 @@ function closeCertDemo() {
 }
 
 // Blocca app al caricamento
+// ── Termini e Condizioni + onboarding gating ─────────────────────────────────
+function _isTCAccepted(){ return localStorage.getItem('rephase_tc_accepted') === '1'; }
+
+// Nasconde shell app (tabs/mode buttons/drop-area) e mostra CTA "Inizia gratis"
+function _hideAppShell(){
+  var card = document.getElementById('verifica');
+  if (card) card.style.display = 'none';
+  var cta = document.getElementById('onboard-cta');
+  if (cta) cta.style.display = '';
+}
+
+// Mostra shell app, nasconde CTA "Inizia gratis"
+function _revealAppShell(){
+  var cta = document.getElementById('onboard-cta');
+  if (cta) cta.style.display = 'none';
+  _showAppUI(); // mostra #verifica
+}
+
+function _isValidEmail(e){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+
+// Stato globale: piano scelto durante l'onboarding (free|pro|lifetime)
+window._pendingPlan = null;
+window._pendingAutoRenew = true; // default per Pro
+
+// Mutua esclusione radio renewal
+function _signupRenewalChange(autoRenew){
+  window._pendingAutoRenew = !!autoRenew;
+  var on  = document.getElementById('signup-autorenew-on');
+  var off = document.getElementById('signup-autorenew-off');
+  if (on)  on.checked  = autoRenew;
+  if (off) off.checked = !autoRenew;
+}
+
+// ── Modal Signup unificata (Free / Pro / Una Tantum + T&C) ──────────────────
+function openSignupModal(plan, prefillEmail){
+  plan = plan || 'free';
+  window._pendingPlan = plan;
+  window._pendingAutoRenew = true; // reset al default ad ogni apertura
+  var titles = {
+    'free':     'Inizia con rephase',
+    'pro':      'Abbonati a Pro',
+    'lifetime': 'Acquista Una Tantum'
+  };
+  var subtitles = {
+    'free':     'Verifica illimitata + 2 conversioni gratuite',
+    'pro':      'Verifica + conversioni illimitate. Procederai al pagamento dopo la verifica email.',
+    'lifetime': 'Accesso a vita, pagamento unico. Procederai al pagamento dopo la verifica email.'
+  };
+  var m = document.getElementById('signup-modal');
+  if (!m) return;
+  var t = document.getElementById('signup-title');
+  var s = document.getElementById('signup-subtitle');
+  if (t) t.textContent = titles[plan] || titles.free;
+  if (s) s.textContent = subtitles[plan] || subtitles.free;
+  // Mostra blocco rinnovo solo per Pro (non per free né lifetime)
+  var renewalBlock = document.getElementById('signup-renewal-block');
+  if (renewalBlock) renewalBlock.style.display = (plan === 'pro') ? '' : 'none';
+  // Reset radio al default (auto-renew on)
+  var on  = document.getElementById('signup-autorenew-on');
+  var off = document.getElementById('signup-autorenew-off');
+  if (on)  on.checked  = true;
+  if (off) off.checked = false;
+  m.style.display = 'flex';
+  var em = document.getElementById('signup-email');
+  if (em) {
+    em.value = prefillEmail || '';
+    setTimeout(function(){ em.focus(); }, 50);
+  }
+  var cb = document.getElementById('signup-tc');
+  if (cb) cb.checked = false;
+  var err = document.getElementById('signup-err');
+  if (err) err.style.display = 'none';
+  _signupUpdateBtn();
+}
+function closeSignupModal(){
+  var m = document.getElementById('signup-modal');
+  if (m) m.style.display = 'none';
+}
+function _signupUpdateBtn(){
+  var btn = document.getElementById('signup-btn');
+  var cb  = document.getElementById('signup-tc');
+  var em  = document.getElementById('signup-email');
+  if (!btn || !cb || !em) return;
+  var ok = cb.checked && _isValidEmail(em.value.trim());
+  btn.disabled = !ok;
+  if (ok) {
+    btn.style.background = '#34c759';
+    btn.style.color = '#1a1a1a';
+    btn.style.cursor = 'pointer';
+  } else {
+    btn.style.background = '#ccc';
+    btn.style.color = '#888';
+    btn.style.cursor = 'not-allowed';
+  }
+}
+function _signupSubmit(){
+  var em  = document.getElementById('signup-email');
+  var cb  = document.getElementById('signup-tc');
+  var err = document.getElementById('signup-err');
+  if (err) err.style.display = 'none';
+  var email = em ? em.value.trim() : '';
+  if (!_isValidEmail(email)) {
+    if (err) { err.textContent = 'Inserisci un indirizzo email valido'; err.style.display = 'block'; }
+    return;
+  }
+  if (!cb || !cb.checked) {
+    if (err) { err.textContent = 'Devi accettare i Termini e Condizioni'; err.style.display = 'block'; }
+    return;
+  }
+  localStorage.setItem('rephase_tc_accepted', '1');
+  closeSignupModal();
+  // IMPORTANTE: openAuthModal() resetta auth-email a stringa vuota,
+  // quindi va chiamata PRIMA di settare il valore. window._pendingPlan
+  // (già settato in openSignupModal) verrà letto da authVerifyOtp dopo l'OTP.
+  openAuthModal();
+  var modalInput = document.getElementById('auth-email');
+  if (modalInput) modalInput.value = email;
+  authSendOtp();
+}
+
 window.addEventListener('DOMContentLoaded', function(){
-  _lockApp();
+  _renderNavAuth();
+
+  // Gating: l'app shell (tab/dropzone) è visibile solo se T&C accettate o sessione attiva
+  var loggedIn = !!localStorage.getItem('rephase_session');
+  if (loggedIn || _isTCAccepted()) {
+    _revealAppShell();
+    _lockApp(); // setup standard guest/login (lockApp gestisce solo lato Convert)
+  } else {
+    _hideAppShell();
+  }
+
+  // Gestisci redirect post-pagamento Stripe
+  var params = new URLSearchParams(window.location.search);
+  var paymentStatus = params.get('payment');
+  if (paymentStatus) {
+    // Pulisci URL dal parametro payment
+    history.replaceState({}, '', window.location.pathname);
+  }
+
   if(localStorage.getItem('rephase_session')){
     _unlockApp();
     _loadUserQuota();
+    if (paymentStatus === 'success') {
+      // Mostra conferma pagamento e ricarica piano da Stripe
+      setTimeout(function(){
+        var infoBox = document.getElementById('user-info');
+        if (infoBox) {
+          var successBanner = document.createElement('div');
+          successBanner.id = 'payment-success-banner';
+          successBanner.style.cssText = 'background:#d4edda;color:#155724;border:1px solid #c3e6cb;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:14px;font-weight:600;text-align:center;';
+          successBanner.textContent = 'Pagamento completato! Il tuo piano Pro è ora attivo.';
+          infoBox.parentNode.insertBefore(successBanner, infoBox);
+          setTimeout(function(){ successBanner.remove(); }, 8000);
+        }
+      }, 500);
+    }
+  } else if (paymentStatus === 'success') {
+    // Utente ha pagato ma non ha sessione — mostra login con messaggio
+    openAuthModal();
+    setTimeout(function(){
+      var errEl = document.getElementById('auth-email-err');
+      if (errEl) {
+        errEl.textContent = 'Pagamento ricevuto! Accedi con la tua email per attivare il piano Pro.';
+        errEl.style.display = 'block';
+        errEl.style.color = '#155724';
+        errEl.style.background = '#d4edda';
+        errEl.style.border = '1px solid #c3e6cb';
+        errEl.style.borderRadius = '8px';
+        errEl.style.padding = '8px 12px';
+      }
+    }, 200);
   }
 });
 </script>

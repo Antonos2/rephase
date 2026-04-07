@@ -36,6 +36,220 @@ _active_verifies: int = 0
 _active_analyses: int = 0
 _counters_lock = threading.Lock()
 
+# ── Blacklist Free SQLite (lookup O(1) per email) ─────────────────────────────
+import sqlite3
+
+# Path persistente: su Render il disco è montato in /data, in locale fallback ./rephase.db
+def _resolve_db_path():
+    override = os.environ.get("REPHASE_DB_PATH", "")
+    if override:
+        return override
+    if os.path.isdir("/data"):
+        return "/data/rephase.db"
+    return "rephase.db"
+
+_BLACKLIST_DB_PATH = _resolve_db_path()
+_blacklist_lock = threading.Lock()
+
+def _blacklist_init():
+    conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+    try:
+        # email è PRIMARY KEY → indice automatico, lookup O(1)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS free_exhausted (
+                email TEXT PRIMARY KEY,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"[blacklist] SQLite db path = {_BLACKLIST_DB_PATH}", flush=True)
+
+_blacklist_init()
+
+def _abbonati_init():
+    """Tabella abbonati: email, piano, date, importo, contatori uso.
+    Migra automaticamente schemi precedenti aggiungendo colonne mancanti."""
+    conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS abbonati (
+                email TEXT NOT NULL,
+                piano TEXT NOT NULL,
+                data_iscrizione TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                data_scadenza TIMESTAMP,
+                importo_chf REAL,
+                stripe_event_id TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verifiche_totali INTEGER DEFAULT 0,
+                conversioni_totali INTEGER DEFAULT 0,
+                PRIMARY KEY (email, piano)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_abbonati_email ON abbonati(email)")
+
+        # Migrazione: aggiungi colonne mancanti per DB pre-esistenti
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(abbonati)").fetchall()}
+        for col, ddl in [
+            ("verifiche_totali",   "ALTER TABLE abbonati ADD COLUMN verifiche_totali INTEGER DEFAULT 0"),
+            ("conversioni_totali", "ALTER TABLE abbonati ADD COLUMN conversioni_totali INTEGER DEFAULT 0"),
+        ]:
+            if col not in existing_cols:
+                try:
+                    conn.execute(ddl)
+                    print(f"[abbonati] migrazione: aggiunta colonna {col}", flush=True)
+                except Exception as ex:
+                    print(f"[abbonati] migrazione errore {col}: {ex}", flush=True)
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"[abbonati] SQLite tabella inizializzata", flush=True)
+
+_abbonati_init()
+
+def upsert_abbonato(email, piano, data_scadenza=None, importo_chf=None, stripe_event_id=None):
+    """Inserisce o aggiorna un abbonato. Idempotente: se (email, piano) esiste,
+    aggiorna data_scadenza, importo e updated_at; data_iscrizione resta originale."""
+    if not email or not piano:
+        return
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            # Prova insert; se conflitto su PK, aggiorna i campi
+            conn.execute("""
+                INSERT INTO abbonati (email, piano, data_scadenza, importo_chf, stripe_event_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(email, piano) DO UPDATE SET
+                    data_scadenza = excluded.data_scadenza,
+                    importo_chf   = excluded.importo_chf,
+                    stripe_event_id = excluded.stripe_event_id,
+                    updated_at    = CURRENT_TIMESTAMP
+            """, (e, piano, data_scadenza, importo_chf, stripe_event_id))
+            conn.commit()
+        finally:
+            conn.close()
+    print(f"[abbonati] upsert email={e} piano={piano} scadenza={data_scadenza} importo={importo_chf}", flush=True)
+
+def increment_verifica_abbonato(email):
+    """Incrementa verifiche_totali per email (no-op se email non esiste in abbonati)."""
+    if not email:
+        return
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            conn.execute("UPDATE abbonati SET verifiche_totali = verifiche_totali + 1 WHERE email = ?", (e,))
+            conn.commit()
+        finally:
+            conn.close()
+
+def increment_conversione_abbonato(email):
+    """Incrementa conversioni_totali per email (no-op se email non esiste in abbonati)."""
+    if not email:
+        return
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            conn.execute("UPDATE abbonati SET conversioni_totali = conversioni_totali + 1 WHERE email = ?", (e,))
+            conn.commit()
+        finally:
+            conn.close()
+
+def _get_plan_from_db(email):
+    """Cerca un piano attivo per email nella tabella abbonati. Ritorna (plan, scadenza_iso, verifiche, conversioni)
+    o (None, None, 0, 0) se non trovato. Lifetime (data_scadenza NULL) ha priorità sui piani con scadenza."""
+    if not email:
+        return (None, None, 0, 0)
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            # Lifetime (NULL) sempre prioritario, poi pro più "fresco" (scadenza più lontana)
+            row = conn.execute("""
+                SELECT piano, data_scadenza, verifiche_totali, conversioni_totali
+                FROM abbonati
+                WHERE email = ?
+                  AND (data_scadenza IS NULL OR data_scadenza > datetime('now'))
+                ORDER BY (data_scadenza IS NULL) DESC, data_scadenza DESC
+                LIMIT 1
+            """, (e,)).fetchone()
+        finally:
+            conn.close()
+    if not row:
+        return (None, None, 0, 0)
+    return (row[0], row[1], row[2] or 0, row[3] or 0)
+
+def _migrate_exhausted_emails():
+    """Migra all'avvio le email che hanno già esaurito le 2 conversioni gratuite
+    nel sistema in-memory (_conversions_store) verso la blacklist SQLite.
+    Idempotente: chiamabile a ogni avvio. Salta utenti Pro/Lifetime."""
+    try:
+        from core.auth import _conversions_store, _conversions_lock, FREE_CONVERSIONS_MAX
+        with _conversions_lock:
+            snapshot = list(_conversions_store.items())
+        if not snapshot:
+            print("[blacklist] migrate: nessuna email da migrare (store vuoto)", flush=True)
+            return
+        migrated = 0
+        skipped_pro = 0
+        for email, used in snapshot:
+            if used < FREE_CONVERSIONS_MAX:
+                continue
+            try:
+                if _get_user_plan(email) != "free":
+                    skipped_pro += 1
+                    continue
+                mark_free_exhausted(email)
+                migrated += 1
+            except Exception as ex:
+                print(f"[blacklist] migrate error per {email}: {type(ex).__name__}: {ex}", flush=True)
+        print(f"[blacklist] migrate: {migrated} email migrate, {skipped_pro} pro/lifetime saltate", flush=True)
+    except Exception as e:
+        print(f"[blacklist] _migrate_exhausted_emails error: {type(e).__name__}: {e}", flush=True)
+
+def is_free_exhausted(email: str) -> bool:
+    """Lookup O(1) sulla blacklist Free."""
+    if not email:
+        return False
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            cur = conn.execute("SELECT 1 FROM free_exhausted WHERE email = ? LIMIT 1", (e,))
+            return cur.fetchone() is not None
+        finally:
+            conn.close()
+
+def mark_free_exhausted(email: str):
+    """Inserisce email in blacklist (idempotente)."""
+    if not email:
+        return
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            conn.execute("INSERT OR IGNORE INTO free_exhausted(email) VALUES (?)", (e,))
+            conn.commit()
+        finally:
+            conn.close()
+    print(f"[blacklist] free_exhausted += {e}", flush=True)
+
+def unmark_free_exhausted(email: str):
+    """Rimuove email dalla blacklist (es. dopo upgrade Pro)."""
+    if not email:
+        return
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            conn.execute("DELETE FROM free_exhausted WHERE email = ?", (e,))
+            conn.commit()
+        finally:
+            conn.close()
+
 
 def _log_event(
     event_type: str,        # "verify" | "convert" | "convert_sync" | "analyze"
@@ -152,6 +366,112 @@ def _load_job(job_id):
     with open(p) as f:
         return _json.load(f)
 
+def _get_user_plan_details(email):
+    """Ritorna (plan, subscription_end_iso). plan ∈ {'free','pro_monthly','pro_annual','lifetime'}.
+    subscription_end_iso è ISO UTC solo per pro_monthly/pro_annual; None altrimenti.
+
+    DB-first: prima cerca nella tabella abbonati locale (zero chiamate Stripe se trovato).
+    Fallback su Stripe solo se nessun record locale valido.
+    """
+    if not email:
+        return ("free", None)
+
+    email_norm = email.strip().lower()
+
+    # ── Step 1: lookup nel DB locale ──
+    db_plan, db_scadenza, db_verifiche, db_conv = _get_plan_from_db(email_norm)
+    if db_plan:
+        scadenza_fmt = db_scadenza or "lifetime"
+        print(f"[plan] DB locale: email={email_norm} piano={db_plan} scade={scadenza_fmt} verifiche={db_verifiche} conversioni={db_conv}", flush=True)
+        # Per lifetime ritorniamo None come scadenza (coerente con semantica esistente)
+        return (db_plan, db_scadenza if db_plan != "lifetime" else None)
+
+    # ── Step 2: fallback Stripe ──
+    stripe_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    if not stripe_key:
+        return ("free", None)
+    price_annual = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+    price_monthly = os.environ.get("STRIPE_PRICE_MONTHLY", "")
+
+    try:
+        stripe.api_key = stripe_key
+        customers = stripe.Customer.list(email=email_norm, limit=10)
+        if not customers.data:
+            print(f"[auth] _get_user_plan({email_norm}): nessun customer Stripe → free", flush=True)
+            return ("free", None)
+
+        found_lifetime = False
+
+        for cust in customers.data:
+            cust_email = (cust.email or "").strip().lower()
+            if cust_email != email_norm:
+                continue
+            cust_id = cust.id
+
+            # ── Check 1: subscription attiva REALMENTE pagata ──
+            subs = stripe.Subscription.list(customer=cust_id, status="active", limit=10)
+            for sub in subs.data:
+                try:
+                    invoices = stripe.Invoice.list(subscription=sub.id, status="paid", limit=1)
+                    if not invoices.data:
+                        print(f"[auth] _get_user_plan({email_norm}): sub {sub.id} active ma 0 invoice paid → ignorata", flush=True)
+                        continue
+                except Exception as ex:
+                    print(f"[auth] _get_user_plan: invoice check error: {type(ex).__name__}: {ex}", flush=True)
+                    continue
+
+                sub_price = ""
+                try:
+                    sub_price = sub["items"]["data"][0]["price"]["id"]
+                except (KeyError, IndexError, TypeError) as ex:
+                    print(f"[auth] _get_user_plan: price ID non leggibile: {type(ex).__name__}: {ex}", flush=True)
+
+                # Estrai data di scadenza dalla subscription (current_period_end)
+                end_iso = None
+                try:
+                    end_unix = sub["current_period_end"]
+                    end_iso = datetime.fromtimestamp(end_unix, tz=timezone.utc).isoformat()
+                except (KeyError, TypeError, ValueError):
+                    end_iso = None
+
+                if sub_price == price_annual:
+                    print(f"[auth] _get_user_plan({email_norm}): pro_annual end={end_iso}", flush=True)
+                    return ("pro_annual", end_iso)
+                if sub_price == price_monthly:
+                    print(f"[auth] _get_user_plan({email_norm}): pro_monthly end={end_iso}", flush=True)
+                    return ("pro_monthly", end_iso)
+                print(f"[auth] _get_user_plan({email_norm}): WARN price '{sub_price}' non in env vars → assumo pro_monthly", flush=True)
+                return ("pro_monthly", end_iso)
+
+            # ── Check 2: lifetime (one-time payment riuscito) ──
+            sessions = stripe.checkout.Session.list(customer=cust_id, limit=20)
+            for s in sessions.data:
+                if s.payment_status == "paid" and s.mode == "payment":
+                    found_lifetime = True
+                    break
+
+        if found_lifetime:
+            print(f"[auth] _get_user_plan({email_norm}): lifetime", flush=True)
+            return ("lifetime", None)
+
+        print(f"[auth] _get_user_plan({email_norm}): nessuna sub pagata né lifetime → free", flush=True)
+        return ("free", None)
+
+    except Exception as e:
+        import traceback
+        print(f"[auth] _get_user_plan error: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        return ("free", None)
+
+
+def _get_user_plan(email):
+    """Wrapper retro-compatibile: ritorna solo il piano (string)."""
+    plan, _end = _get_user_plan_details(email)
+    return plan
+
+# Migrazione blacklist all'avvio (richiede _get_user_plan e mark_free_exhausted già definiti)
+_migrate_exhausted_emails()
+
 def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_sec, sox_timeout, cleanup_input=True):
     """Eseguita in background thread — aggiorna il job file."""
     try:
@@ -179,8 +499,20 @@ def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_se
 
         # Incrementa quota conversioni se utente autenticato
         if _conv_auth_email:
-            from core.auth import increment_conversions
+            from core.auth import increment_conversions, get_conversions_used, FREE_CONVERSIONS_MAX
             increment_conversions(_conv_auth_email)
+            # Stats abbonati: incrementa conversioni_totali (no-op se non in tabella)
+            try:
+                increment_conversione_abbonato(_conv_auth_email)
+            except Exception as ex:
+                print(f"[abbonati] increment_conversione errore: {ex}", flush=True)
+            # Se l'utente Free ha raggiunto il limite → blacklist
+            try:
+                if get_conversions_used(_conv_auth_email) >= FREE_CONVERSIONS_MAX:
+                    if _get_user_plan(_conv_auth_email) == "free":
+                        mark_free_exhausted(_conv_auth_email)
+            except Exception as ex:
+                print(f"[blacklist] errore mark async: {type(ex).__name__}: {ex}", flush=True)
 
         _save_job(job_id, {
             "status": "done",
@@ -294,6 +626,13 @@ async def verify(request: Request, background_tasks: BackgroundTasks, file: Uplo
         raise HTTPException(413, "File troppo grande")
     file_mb = len(content) / 1_000_000
 
+    # Recupera email autenticata (se presente) per incrementare verifiche_totali abbonati
+    _verify_email = None
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        from core.auth import get_email_by_token
+        _verify_email = get_email_by_token(authorization[7:])
+
     tmp = str(TEMP_DIR / f"{uuid.uuid4()}{ext}")
     async with aiofiles.open(tmp, 'wb') as f:
         await f.write(content)
@@ -309,6 +648,12 @@ async def verify(request: Request, background_tasks: BackgroundTasks, file: Uplo
         if not result["success"]:
             esito = "error"
             raise HTTPException(500, result.get("error", "Errore"))
+        # Incrementa contatore verifiche per abbonati (no-op se non in tabella)
+        if _verify_email:
+            try:
+                increment_verifica_abbonato(_verify_email)
+            except Exception as ex:
+                print(f"[abbonati] increment_verifica errore: {ex}", flush=True)
         return {
             **result,
             "filename": file.filename,
@@ -349,7 +694,8 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
     if authorization.startswith("Bearer "):
         _auth_email = get_email_by_token(authorization[7:])
     if _auth_email:
-        if get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
+        _user_plan = _get_user_plan(_auth_email)
+        if _user_plan == "free" and get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
             return JSONResponse(
                 {"error": "Hai esaurito le 2 conversioni gratuite. Abbonati a Pro per conversioni illimitate."},
                 status_code=403,
@@ -430,6 +776,16 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
 
         if _auth_email:
             increment_conversions(_auth_email)
+            try:
+                increment_conversione_abbonato(_auth_email)
+            except Exception as ex:
+                print(f"[abbonati] increment_conversione errore: {ex}", flush=True)
+            try:
+                if get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
+                    if _get_user_plan(_auth_email) == "free":
+                        mark_free_exhausted(_auth_email)
+            except Exception as ex:
+                print(f"[blacklist] errore mark sync: {type(ex).__name__}: {ex}", flush=True)
 
         background_tasks.add_task(cleanup, tmp_out)
         return FileResponse(
@@ -468,6 +824,21 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
 @app.post("/convert-from-verify")
 async def convert_from_verify(request: Request):
     """Avvia conversione riusando il file già caricato durante la verifica."""
+    # ── Quota check ──
+    from core.auth import get_email_by_token, get_conversions_used, FREE_CONVERSIONS_MAX
+    _auth_email = None
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        _auth_email = get_email_by_token(authorization[7:])
+    if _auth_email:
+        # Controlla piano Stripe — Pro/Lifetime saltano la quota
+        _user_plan = _get_user_plan(_auth_email)
+        if _user_plan == "free" and get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
+            return JSONResponse(
+                {"error": "Hai esaurito le 2 conversioni gratuite. Abbonati a Pro per conversioni illimitate."},
+                status_code=403,
+            )
+
     try:
         body = await request.json()
     except Exception:
@@ -498,8 +869,8 @@ async def convert_from_verify(request: Request):
     tmp_out = str(TEMP_DIR / f"{job_id}_432.{format}")
     filename = verify_job.get("_formato", "audio") + ext
 
-    _save_job(job_id, {"status": "uploading", "progress": 0})
-    print(f"[convert/from-verify] job={job_id}  verify_job={verify_job_id}  size={file_mb:.1f}MB  duration={duration_sec:.1f}s", flush=True)
+    _save_job(job_id, {"status": "uploading", "progress": 0, "_auth_email": _auth_email})
+    print(f"[convert/from-verify] job={job_id}  verify_job={verify_job_id}  size={file_mb:.1f}MB  duration={duration_sec:.1f}s  email={_auth_email}", flush=True)
 
     t = threading.Thread(target=_run_conversion,
                          args=(job_id, tmp_in, tmp_out, format, filename, file_mb, duration_sec, sox_timeout, False),
@@ -517,7 +888,8 @@ async def convert_start(request: Request, file: UploadFile = File(...), format: 
     if authorization.startswith("Bearer "):
         _auth_email = get_email_by_token(authorization[7:])
     if _auth_email:
-        if get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
+        _user_plan = _get_user_plan(_auth_email)
+        if _user_plan == "free" and get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
             return JSONResponse(
                 {"error": "Hai esaurito le 2 conversioni gratuite. Abbonati a Pro per conversioni illimitate."},
                 status_code=403,
@@ -627,6 +999,11 @@ async def terms_en():
     with open("static/terms_en.html") as f:
         return f.read()
 
+@app.get("/termini", response_class=HTMLResponse)
+async def termini():
+    with open("static/termini.html") as f:
+        return f.read()
+
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
 _ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -652,6 +1029,17 @@ async def analyze_start(request: Request, file: UploadFile = File(...), full_ana
     if len(content) > MAX_SIZE:
         raise HTTPException(413, "File troppo grande")
     file_mb = len(content) / 1_000_000
+
+    # Incrementa verifiche_totali per abbonati (no-op se non in tabella)
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        from core.auth import get_email_by_token
+        _verify_email = get_email_by_token(authorization[7:])
+        if _verify_email:
+            try:
+                increment_verifica_abbonato(_verify_email)
+            except Exception as ex:
+                print(f"[abbonati] increment_verifica errore: {ex}", flush=True)
 
     uid = str(uuid.uuid4())
     tmp = str(TEMP_DIR / f"{uid}{ext}")
@@ -942,6 +1330,36 @@ async def send_otp_endpoint(request: Request):
     validation = validate_email(email)
     if not validation["valid"]:
         return JSONResponse({"success": False, "error": validation["error"]}, status_code=400)
+
+    # ── Blacklist Free SQLite: lookup O(1) ──
+    if is_free_exhausted(email):
+        # Step 1: lookup DB locale (zero chiamate Stripe)
+        db_plan, db_scadenza, _v, _c = _get_plan_from_db(email)
+        if db_plan and db_plan != "free":
+            print(f"[auth] email in blacklist ma DB locale piano={db_plan} → sbloccata automaticamente (no Stripe): {email}", flush=True)
+            unmark_free_exhausted(email)
+        else:
+            # Step 2: fallback Stripe (DB locale vuoto o piano free)
+            try:
+                stripe_plan = _get_user_plan(email)
+            except Exception as ex:
+                print(f"[auth] _get_user_plan unreachable: {type(ex).__name__}: {ex} — non blocco l'utente per sicurezza", flush=True)
+                stripe_plan = None  # Stripe irraggiungibile → non bloccare
+            if stripe_plan and stripe_plan != "free":
+                print(f"[auth] email in blacklist ma Stripe piano={stripe_plan} → sbloccata automaticamente: {email}", flush=True)
+                unmark_free_exhausted(email)
+            elif stripe_plan == "free":
+                # Step 3: Stripe conferma free → blocca
+                print(f"[auth/send-otp] BLOCCATO free_exhausted: {email} piano=free (DB+Stripe)", flush=True)
+                return JSONResponse({
+                    "success": False,
+                    "error": "free_exhausted",
+                    "message": "Hai già utilizzato le 2 conversioni gratuite. Scegli un piano per continuare."
+                }, status_code=403)
+            else:
+                # Stripe irraggiungibile e DB vuoto → safe-mode: lascia procedere (non bloccare paganti per outage)
+                print(f"[auth] Stripe irraggiungibile e DB vuoto → procedo con OTP (safe-mode): {email}", flush=True)
+
     result = generate_otp(email)
     status = 200 if result["success"] else 400
     return JSONResponse(result, status_code=status)
@@ -974,8 +1392,21 @@ async def auth_conversions(request: Request):
     if not email:
         return JSONResponse({"error": "Sessione non valida"}, status_code=401)
     used = get_conversions_used(email)
+    plan, sub_end = _get_user_plan_details(email)
+
+    if plan != "free":
+        return JSONResponse({
+            "email": email,
+            "plan": plan,
+            "subscription_end": sub_end,  # ISO UTC, solo per pro_monthly/pro_annual
+            "conversions_used": used,
+            "conversions_max": -1,
+            "conversions_remaining": -1,
+        })
     return JSONResponse({
         "email": email,
+        "plan": plan,
+        "subscription_end": None,
         "conversions_used": used,
         "conversions_max": FREE_CONVERSIONS_MAX,
         "conversions_remaining": max(0, FREE_CONVERSIONS_MAX - used),
@@ -994,12 +1425,24 @@ async def create_checkout_session(request: Request):
         print(f"[checkout] body parse error: {e}", flush=True)
         return JSONResponse({"error": "Body JSON non valido"}, status_code=400)
 
+    # Recupera email utente dalla sessione (se autenticato)
+    from core.auth import get_email_by_token
+    customer_email = None
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer "):
+        customer_email = get_email_by_token(authorization[7:])
+    print(f"[checkout] customer_email={customer_email}", flush=True)
+
     stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
     print(f"[checkout] stripe_key={'SET' if stripe.api_key else 'MISSING'}", flush=True)
     if not stripe.api_key:
         return JSONResponse({"error": "STRIPE_SECRET_KEY non configurata"}, status_code=500)
 
     plan = body.get("plan", "monthly")
+    auto_renew = body.get("auto_renew", True)
+    if not isinstance(auto_renew, bool):
+        auto_renew = True
+    print(f"[checkout] plan={plan} auto_renew={auto_renew}", flush=True)
     if plan == "annual":
         price_id = os.environ.get("STRIPE_PRICE_ANNUAL", "")
     elif plan == "lifetime":
@@ -1011,20 +1454,172 @@ async def create_checkout_session(request: Request):
     if not price_id:
         return JSONResponse({"error": f"Price ID non configurato per piano: {plan}"}, status_code=400)
 
-    base_url = os.environ.get("BASE_URL", "https://rephase-app.onrender.com")
+    base_url = os.environ.get("BASE_URL", "https://getrephase.com")
     checkout_mode = "payment" if plan == "lifetime" else "subscription"
 
     try:
-        session = stripe.checkout.Session.create(
+        checkout_params = dict(
             payment_method_types=["card"],
             line_items=[{"price": price_id, "quantity": 1}],
             mode=checkout_mode,
             success_url=f"{base_url}/app?payment=success",
             cancel_url=f"{base_url}/app?payment=cancelled",
         )
+        if customer_email:
+            checkout_params["customer_email"] = customer_email
+        # Per subscription: se auto_renew=False, crea con cancel_at_period_end
+        # → Stripe addebita il primo periodo, poi cancella automaticamente alla scadenza
+        if checkout_mode == "subscription" and not auto_renew:
+            checkout_params["subscription_data"] = {"cancel_at_period_end": True}
+            print(f"[checkout] subscription con cancel_at_period_end=True (no rinnovo)", flush=True)
+        session = stripe.checkout.Session.create(**checkout_params)
         print(f"[checkout] session creata: {session.id}", flush=True)
         return JSONResponse({"url": session.url})
     except Exception as e:
         print(f"[checkout] ERRORE stripe: {type(e).__name__}: {e}", flush=True)
         return JSONResponse({"error": f"Stripe error: {str(e)}"}, status_code=502)
+
+# ── Stripe Webhook ───────────────────────────────────────────────────────────
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Gestisce eventi Stripe (checkout completato, pagamento riuscito, cancellazione)."""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+    if not webhook_secret:
+        print("[webhook] STRIPE_WEBHOOK_SECRET non configurata, skip verifica firma", flush=True)
+        try:
+            event = stripe.Event.construct_from(
+                stripe.util.convert_to_stripe_object(
+                    __import__("json").loads(payload)
+                ),
+                stripe.api_key,
+            )
+        except Exception as e:
+            print(f"[webhook] parse error: {e}", flush=True)
+            return JSONResponse({"error": "Payload non valido"}, status_code=400)
+    else:
+        try:
+            stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        except stripe.error.SignatureVerificationError:
+            print("[webhook] Firma non valida", flush=True)
+            return JSONResponse({"error": "Firma non valida"}, status_code=400)
+        except Exception as e:
+            print(f"[webhook] errore: {e}", flush=True)
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    event_type = event.get("type", "")
+    print(f"[webhook] evento ricevuto: {event_type}", flush=True)
+
+    if event_type == "checkout.session.completed":
+        session_obj = event["data"]["object"]
+        customer_email = session_obj.get("customer_email") or session_obj.get("customer_details", {}).get("email")
+        payment_status = session_obj.get("payment_status")
+        print(f"[webhook] checkout completato — email={customer_email} payment_status={payment_status}", flush=True)
+        if customer_email and payment_status == "paid":
+            _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | checkout.completed | email={customer_email}")
+            # Sblocca dalla blacklist Free
+            unmark_free_exhausted(customer_email)
+            # Lifetime: salva subito in tabella abbonati (no invoice ricorrente)
+            if session_obj.get("mode") == "payment":
+                amount_total = (session_obj.get("amount_total") or 0) / 100
+                upsert_abbonato(
+                    email=customer_email,
+                    piano="lifetime",
+                    data_scadenza=None,  # accesso a vita
+                    importo_chf=amount_total,
+                    stripe_event_id=event.get("id"),
+                )
+
+    elif event_type in ("customer.subscription.created", "customer.subscription.updated"):
+        sub = event["data"]["object"]
+        customer_id = sub.get("customer")
+        status = sub.get("status")
+        print(f"[webhook] subscription {event_type} — customer={customer_id} status={status}", flush=True)
+        _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | {event_type} | customer={customer_id} status={status}")
+        # Determina email e piano dalla subscription, poi salva
+        try:
+            stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+            cust = stripe.Customer.retrieve(customer_id) if customer_id else None
+            sub_email = (cust.email if cust else None)
+            price_id = ""
+            try:
+                price_id = sub["items"]["data"][0]["price"]["id"]
+            except (KeyError, IndexError, TypeError):
+                pass
+            price_annual  = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+            piano = "pro_annual" if price_id == price_annual else "pro_monthly"
+            # data_scadenza = current_period_end (Unix timestamp → ISO)
+            scadenza_unix = sub.get("current_period_end")
+            scadenza_iso = datetime.fromtimestamp(scadenza_unix, tz=timezone.utc).isoformat() if scadenza_unix else None
+            # importo dal price.unit_amount
+            importo = None
+            try:
+                importo = sub["items"]["data"][0]["price"]["unit_amount"] / 100
+            except (KeyError, IndexError, TypeError):
+                pass
+            if sub_email and status == "active":
+                upsert_abbonato(
+                    email=sub_email,
+                    piano=piano,
+                    data_scadenza=scadenza_iso,
+                    importo_chf=importo,
+                    stripe_event_id=event.get("id"),
+                )
+                unmark_free_exhausted(sub_email)
+        except Exception as ex:
+            print(f"[webhook] errore upsert abbonato (sub.{event_type}): {type(ex).__name__}: {ex}", flush=True)
+
+    elif event_type == "customer.subscription.deleted":
+        sub = event["data"]["object"]
+        customer_id = sub.get("customer")
+        print(f"[webhook] subscription cancellata — customer={customer_id}", flush=True)
+        _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | subscription.deleted | customer={customer_id}")
+
+    elif event_type == "invoice.payment_succeeded":
+        invoice = event["data"]["object"]
+        customer_email = invoice.get("customer_email")
+        amount = invoice.get("amount_paid", 0) / 100
+        print(f"[webhook] pagamento riuscito — email={customer_email} amount={amount}", flush=True)
+        _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | invoice.paid | email={customer_email} amount={amount}")
+        # Salva/aggiorna abbonato in tabella
+        try:
+            sub_id = invoice.get("subscription")
+            piano = "pro_monthly"
+            scadenza_iso = None
+            if sub_id:
+                stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+                sub_obj = stripe.Subscription.retrieve(sub_id)
+                price_id = ""
+                try:
+                    price_id = sub_obj["items"]["data"][0]["price"]["id"]
+                except (KeyError, IndexError, TypeError):
+                    pass
+                price_annual = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+                piano = "pro_annual" if price_id == price_annual else "pro_monthly"
+                scadenza_unix = sub_obj.get("current_period_end")
+                if scadenza_unix:
+                    scadenza_iso = datetime.fromtimestamp(scadenza_unix, tz=timezone.utc).isoformat()
+            if customer_email:
+                upsert_abbonato(
+                    email=customer_email,
+                    piano=piano,
+                    data_scadenza=scadenza_iso,
+                    importo_chf=amount,
+                    stripe_event_id=event.get("id"),
+                )
+                unmark_free_exhausted(customer_email)
+        except Exception as ex:
+            print(f"[webhook] errore upsert abbonato (invoice.paid): {type(ex).__name__}: {ex}", flush=True)
+
+    elif event_type == "invoice.payment_failed":
+        invoice = event["data"]["object"]
+        customer_email = invoice.get("customer_email")
+        print(f"[webhook] pagamento fallito — email={customer_email}", flush=True)
+        _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | invoice.failed | email={customer_email}")
+
+    return JSONResponse({"received": True})
 
