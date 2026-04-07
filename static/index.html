@@ -1358,13 +1358,16 @@ function _renderNavAuth(){
   if (session && email) {
     var plan = window._userPlan || 'free';
     var subEnd = window._userSubscriptionEnd || null;
+    var username = window._userUsername || null;
     var planLabels = {
       'pro_monthly': 'PRO Mensile',
       'pro_annual':  'PRO Annuale',
       'lifetime':    'UNA TANTUM',
       'free':        'FREE'
     };
-    var label = planLabels[plan] || 'FREE';
+    var planText = planLabels[plan] || 'FREE';
+    // Mostra username (se presente) seguito dal piano. Esempio: "rephase_a1b2c · PRO Mensile"
+    var label = username ? (username + ' \u00B7 ' + planText) : planText;
     // Aggiungi data scadenza solo per pro_monthly e pro_annual
     if ((plan === 'pro_monthly' || plan === 'pro_annual') && subEnd) {
       var formatted = _formatDateIT(subEnd);
@@ -1375,7 +1378,7 @@ function _renderNavAuth(){
                                       : '#34c759';
     planBadge.textContent = label;
     planBadge.style.background = color;
-    planBadge.title = email;
+    planBadge.title = email; // email rimane visibile in tooltip
     planBadge.style.display = '';
     logoutBtn.style.display = '';
   } else {
@@ -1397,18 +1400,19 @@ function _guardConvertTabClick(){
 function _renderAuthBar(){ _renderNavAuth(); }
 
 var _updateUserUI_timer = null;
-function _updateUserUI(email, conversionsRemaining, plan, subscriptionEnd) {
+function _updateUserUI(email, conversionsRemaining, plan, subscriptionEnd, username) {
   if(_updateUserUI_timer) clearTimeout(_updateUserUI_timer);
-  _updateUserUI_timer = setTimeout(function(){ _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd); }, 100);
+  _updateUserUI_timer = setTimeout(function(){ _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd, username); }, 100);
 }
-function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd) {
-  console.log("_updateUserUI chiamata", email, conversionsRemaining, plan, subscriptionEnd);
+function _updateUserUI_exec(email, conversionsRemaining, plan, subscriptionEnd, username) {
+  console.log("_updateUserUI chiamata", email, conversionsRemaining, plan, subscriptionEnd, username);
   plan = plan || "free";
   var isPro = (plan !== "free");
   // Stato globale per gli handler drag&drop e per il badge nav
   window._userPlan = plan;
   window._userConversionsRemaining = conversionsRemaining;
   window._userSubscriptionEnd = subscriptionEnd || null;
+  window._userUsername = username || null;
   // Aggiorna anche la auth-bar inline (badge piano)
   if (typeof _renderAuthBar === 'function') _renderAuthBar();
 
@@ -1590,7 +1594,7 @@ async function _refreshQuotaAfterConvert() {
     });
     if (res.ok) {
       var data = await res.json();
-      _updateUserUI(data.email || email, data.conversions_remaining, data.plan, data.subscription_end);
+      _updateUserUI(data.email || email, data.conversions_remaining, data.plan, data.subscription_end, data.username);
     }
   } catch(e) { console.warn('[auth] quota refresh error', e); }
 }
@@ -1606,7 +1610,7 @@ async function _loadUserQuota() {
     });
     if (res.ok) {
       var data = await res.json();
-      _updateUserUI(data.email || email, data.conversions_remaining, data.plan, data.subscription_end);
+      _updateUserUI(data.email || email, data.conversions_remaining, data.plan, data.subscription_end, data.username);
     }
   } catch(e) { console.warn('[auth] quota load error', e); }
 }
@@ -1638,7 +1642,7 @@ async function authVerifyOtp() {
       headers: { 'Authorization': 'Bearer ' + data.session_token }
     })
     .then(r => r.json())
-    .then(d => { _updateUserUI(d.email, d.conversions_remaining, d.plan, d.subscription_end); })
+    .then(d => { _updateUserUI(d.email, d.conversions_remaining, d.plan, d.subscription_end, d.username); })
     .catch(e => console.error('[rephase] conversions error:', e));
 
     // Se l'utente è entrato cliccando "Abbonati ora" o "Acquista ora", procedi al checkout

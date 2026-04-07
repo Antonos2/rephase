@@ -69,7 +69,7 @@ def _blacklist_init():
 _blacklist_init()
 
 def _abbonati_init():
-    """Tabella abbonati: email, piano, date, importo, contatori uso.
+    """Tabella abbonati: email, piano, date, importo, contatori uso, username.
     Migra automaticamente schemi precedenti aggiungendo colonne mancanti."""
     conn = sqlite3.connect(_BLACKLIST_DB_PATH)
     try:
@@ -84,6 +84,7 @@ def _abbonati_init():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 verifiche_totali INTEGER DEFAULT 0,
                 conversioni_totali INTEGER DEFAULT 0,
+                username TEXT,
                 PRIMARY KEY (email, piano)
             )
         """)
@@ -94,6 +95,7 @@ def _abbonati_init():
         for col, ddl in [
             ("verifiche_totali",   "ALTER TABLE abbonati ADD COLUMN verifiche_totali INTEGER DEFAULT 0"),
             ("conversioni_totali", "ALTER TABLE abbonati ADD COLUMN conversioni_totali INTEGER DEFAULT 0"),
+            ("username",           "ALTER TABLE abbonati ADD COLUMN username TEXT"),
         ]:
             if col not in existing_cols:
                 try:
@@ -106,31 +108,87 @@ def _abbonati_init():
         conn.close()
     print(f"[abbonati] SQLite tabella inizializzata", flush=True)
 
+def _generate_username():
+    """Genera username random nel formato rephase_XXXXX (5 char alfanumerici lowercase)."""
+    import random, string
+    chars = string.ascii_lowercase + string.digits
+    return "rephase_" + "".join(random.choices(chars, k=5))
+
+def _get_username_for_email(conn, email_norm):
+    """Ritorna username esistente per email (qualsiasi piano), o None."""
+    row = conn.execute(
+        "SELECT username FROM abbonati WHERE email = ? AND username IS NOT NULL LIMIT 1",
+        (email_norm,)
+    ).fetchone()
+    return row[0] if row and row[0] else None
+
 _abbonati_init()
 
 def upsert_abbonato(email, piano, data_scadenza=None, importo_chf=None, stripe_event_id=None):
     """Inserisce o aggiorna un abbonato. Idempotente: se (email, piano) esiste,
-    aggiorna data_scadenza, importo e updated_at; data_iscrizione resta originale."""
+    aggiorna data_scadenza, importo e updated_at; data_iscrizione resta originale.
+    Garantisce che ogni email abbia uno username univoco generato al primo signup."""
     if not email or not piano:
         return
     e = email.strip().lower()
     with _blacklist_lock:
         conn = sqlite3.connect(_BLACKLIST_DB_PATH)
         try:
-            # Prova insert; se conflitto su PK, aggiorna i campi
+            # Riusa username esistente per questa email, oppure generane uno nuovo
+            username = _get_username_for_email(conn, e)
+            if not username:
+                # Loop di sicurezza per evitare collisioni (estremamente rare)
+                for _ in range(10):
+                    candidate = _generate_username()
+                    exists = conn.execute(
+                        "SELECT 1 FROM abbonati WHERE username = ? LIMIT 1", (candidate,)
+                    ).fetchone()
+                    if not exists:
+                        username = candidate
+                        break
+                if not username:
+                    username = _generate_username()  # fallback (collisione improbabile)
+
             conn.execute("""
-                INSERT INTO abbonati (email, piano, data_scadenza, importo_chf, stripe_event_id, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO abbonati (email, piano, data_scadenza, importo_chf, stripe_event_id, updated_at, username)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                 ON CONFLICT(email, piano) DO UPDATE SET
                     data_scadenza = excluded.data_scadenza,
                     importo_chf   = excluded.importo_chf,
                     stripe_event_id = excluded.stripe_event_id,
-                    updated_at    = CURRENT_TIMESTAMP
-            """, (e, piano, data_scadenza, importo_chf, stripe_event_id))
+                    updated_at    = CURRENT_TIMESTAMP,
+                    username      = COALESCE(abbonati.username, excluded.username)
+            """, (e, piano, data_scadenza, importo_chf, stripe_event_id, username))
             conn.commit()
         finally:
             conn.close()
-    print(f"[abbonati] upsert email={e} piano={piano} scadenza={data_scadenza} importo={importo_chf}", flush=True)
+    print(f"[abbonati] upsert email={e} piano={piano} username={username} scadenza={data_scadenza} importo={importo_chf}", flush=True)
+
+def get_username_by_email(email):
+    """Lookup username per email. Se non esiste record in abbonati, ne crea uno
+    'placeholder' (piano='free') solo per assegnare lo username e ritornarlo."""
+    if not email:
+        return None
+    e = email.strip().lower()
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            existing = _get_username_for_email(conn, e)
+            if existing:
+                return existing
+            # Nessun record per questa email → crea placeholder con piano='free'
+            for _ in range(10):
+                candidate = _generate_username()
+                if not conn.execute("SELECT 1 FROM abbonati WHERE username = ? LIMIT 1", (candidate,)).fetchone():
+                    break
+            conn.execute(
+                "INSERT OR IGNORE INTO abbonati (email, piano, username) VALUES (?, 'free', ?)",
+                (e, candidate)
+            )
+            conn.commit()
+            return candidate
+        finally:
+            conn.close()
 
 def increment_verifica_abbonato(email):
     """Incrementa verifiche_totali per email (no-op se email non esiste in abbonati)."""
@@ -1393,10 +1451,12 @@ async def auth_conversions(request: Request):
         return JSONResponse({"error": "Sessione non valida"}, status_code=401)
     used = get_conversions_used(email)
     plan, sub_end = _get_user_plan_details(email)
+    username = get_username_by_email(email)
 
     if plan != "free":
         return JSONResponse({
             "email": email,
+            "username": username,
             "plan": plan,
             "subscription_end": sub_end,  # ISO UTC, solo per pro_monthly/pro_annual
             "conversions_used": used,
@@ -1405,6 +1465,7 @@ async def auth_conversions(request: Request):
         })
     return JSONResponse({
         "email": email,
+        "username": username,
         "plan": plan,
         "subscription_end": None,
         "conversions_used": used,
