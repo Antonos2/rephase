@@ -1689,7 +1689,7 @@ async def create_checkout_session(request: Request):
     if plan == "annual":
         price_id = os.environ.get("STRIPE_PRICE_ANNUAL", "")
     elif plan == "lifetime":
-        price_id = os.environ.get("STRIPE_PRICE_LIFETIME", "")
+        price_id = os.environ.get("STRIPE_PRICE_ONETIME", "")
     else:
         price_id = os.environ.get("STRIPE_PRICE_MONTHLY", "")
     print(f"[checkout] plan={plan} price_id={'SET('+price_id[:12]+')' if price_id else 'MISSING'}", flush=True)
