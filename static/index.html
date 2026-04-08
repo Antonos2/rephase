@@ -1305,9 +1305,12 @@ async function authSendOtp() {
   if (!email) { errEl.textContent = 'Inserisci un indirizzo email'; errEl.style.display = 'block'; return; }
   btn.disabled = true; btn.textContent = 'Invio...';
   try {
+    // Se l'utente sta facendo signup per Pro/Lifetime, passa il piano al backend
+    // così la blacklist Free viene bypassata (sta per pagare).
+    const planChoice = window._pendingPlan || null;
     const res = await fetch(API + '/auth/send-otp', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, plan: planChoice })
     });
     const data = await res.json();
     if (!data.success) {

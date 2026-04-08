@@ -1560,6 +1560,7 @@ async def send_otp_endpoint(request: Request):
     except Exception:
         return JSONResponse({"success": False, "error": "Body JSON non valido"}, status_code=400)
     email = body.get("email", "")
+    plan_choice = (body.get("plan") or "").strip().lower()  # 'pro' | 'lifetime' | None
     if not email:
         return JSONResponse({"success": False, "error": "Email richiesta"}, status_code=400)
     validation = validate_email(email)
@@ -1567,7 +1568,11 @@ async def send_otp_endpoint(request: Request):
         return JSONResponse({"success": False, "error": validation["error"]}, status_code=400)
 
     # ── Blacklist Free SQLite: lookup O(1) ──
-    if is_free_exhausted(email):
+    # Bypass se l'utente sta facendo signup per un piano a pagamento
+    # (pro / lifetime / pro_monthly / pro_annual): sta per pagare, lascialo passare.
+    if plan_choice in ("pro", "lifetime", "pro_monthly", "pro_annual"):
+        print(f"[auth/send-otp] signup con plan={plan_choice} → bypass blacklist Free: {email}", flush=True)
+    elif is_free_exhausted(email):
         # Step 1: lookup DB locale (zero chiamate Stripe)
         db_plan, db_scadenza, _v, _c = _get_plan_from_db(email)
         if db_plan and db_plan != "free":
