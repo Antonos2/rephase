@@ -1710,11 +1710,9 @@ async def create_checkout_session(request: Request):
         )
         if customer_email:
             checkout_params["customer_email"] = customer_email
-        # Per subscription: se auto_renew=False, crea con cancel_at_period_end
-        # → Stripe addebita il primo periodo, poi cancella automaticamente alla scadenza
-        if checkout_mode == "subscription" and not auto_renew:
-            checkout_params["subscription_data"] = {"cancel_at_period_end": True}
-            print(f"[checkout] subscription con cancel_at_period_end=True (no rinnovo)", flush=True)
+        # NOTA: il flag auto_renew viene ricevuto dal frontend ma NON applicato qui.
+        # La gestione del non-rinnovo va fatta tramite webhook o API separata
+        # (es. Subscription.modify(cancel_at_period_end=True) dopo il pagamento).
         session = stripe.checkout.Session.create(**checkout_params)
         print(f"[checkout] session creata: {session.id}", flush=True)
         return JSONResponse({"url": session.url})
