@@ -124,6 +124,75 @@ def _get_username_for_email(conn, email_norm):
 
 _abbonati_init()
 
+def _log_operazioni_init():
+    """Tabella log_operazioni: log anonimo (hash) di verifiche e conversioni."""
+    conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS log_operazioni (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                email_hash TEXT,
+                piano TEXT,
+                tipo TEXT,
+                timestamp TEXT,
+                ip_hash TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_log_op_timestamp ON log_operazioni(timestamp)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_log_op_tipo ON log_operazioni(tipo)")
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"[log_operazioni] tabella inizializzata", flush=True)
+
+_log_operazioni_init()
+
+def _log_operazione(email, piano, tipo, request=None):
+    """Inserisce una riga in log_operazioni. email/ip vengono hashati (no PII).
+    Recupera username dalla tabella abbonati se l'email è nota."""
+    try:
+        email_norm = (email or "").strip().lower()
+        # Hash email (primi 8 char SHA256) — pseudonimizzazione
+        email_hash = hashlib.sha256(email_norm.encode("utf-8")).hexdigest()[:8] if email_norm else None
+        # Hash IP completo
+        client_ip = ""
+        if request is not None:
+            try:
+                client_ip = request.headers.get("x-forwarded-for", "") or (request.client.host if request.client else "")
+                if client_ip and "," in client_ip:
+                    client_ip = client_ip.split(",")[0].strip()
+            except Exception:
+                client_ip = ""
+        ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest() if client_ip else None
+        # Lookup username (se utente è in abbonati)
+        username = None
+        if email_norm:
+            with _blacklist_lock:
+                conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+                try:
+                    row = conn.execute(
+                        "SELECT username FROM abbonati WHERE email = ? AND username IS NOT NULL LIMIT 1",
+                        (email_norm,)
+                    ).fetchone()
+                    if row:
+                        username = row[0]
+                finally:
+                    conn.close()
+        ts = datetime.now(timezone.utc).isoformat()
+        with _blacklist_lock:
+            conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+            try:
+                conn.execute("""
+                    INSERT INTO log_operazioni (username, email_hash, piano, tipo, timestamp, ip_hash)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (username, email_hash, piano or "free", tipo, ts, ip_hash))
+                conn.commit()
+            finally:
+                conn.close()
+    except Exception as ex:
+        print(f"[log_operazioni] errore insert: {type(ex).__name__}: {ex}", flush=True)
+
 def upsert_abbonato(email, piano, data_scadenza=None, importo_chf=None, stripe_event_id=None):
     """Inserisce o aggiorna un abbonato. Idempotente: se (email, piano) esiste,
     aggiorna data_scadenza, importo e updated_at; data_iscrizione resta originale.
@@ -564,6 +633,12 @@ def _run_conversion(job_id, tmp_in, tmp_out, fmt, filename, file_mb, duration_se
                 increment_conversione_abbonato(_conv_auth_email)
             except Exception as ex:
                 print(f"[abbonati] increment_conversione errore: {ex}", flush=True)
+            # Log operazione (request=None, è un thread background — IP non disponibile)
+            try:
+                _c_plan = _get_user_plan(_conv_auth_email)
+                _log_operazione(_conv_auth_email, _c_plan, "conversione", None)
+            except Exception as ex:
+                print(f"[log_operazioni] convert async errore: {ex}", flush=True)
             # Se l'utente Free ha raggiunto il limite → blacklist
             try:
                 if get_conversions_used(_conv_auth_email) >= FREE_CONVERSIONS_MAX:
@@ -712,6 +787,12 @@ async def verify(request: Request, background_tasks: BackgroundTasks, file: Uplo
                 increment_verifica_abbonato(_verify_email)
             except Exception as ex:
                 print(f"[abbonati] increment_verifica errore: {ex}", flush=True)
+        # Log operazione (anche per guest senza email)
+        try:
+            _verify_plan = _get_user_plan(_verify_email) if _verify_email else "free"
+            _log_operazione(_verify_email, _verify_plan, "verifica", request)
+        except Exception as ex:
+            print(f"[log_operazioni] verify errore: {ex}", flush=True)
         return {
             **result,
             "filename": file.filename,
@@ -838,6 +919,11 @@ async def convert_sync(request: Request, background_tasks: BackgroundTasks, file
                 increment_conversione_abbonato(_auth_email)
             except Exception as ex:
                 print(f"[abbonati] increment_conversione errore: {ex}", flush=True)
+            try:
+                _cs_plan = _get_user_plan(_auth_email)
+                _log_operazione(_auth_email, _cs_plan, "conversione", request)
+            except Exception as ex:
+                print(f"[log_operazioni] convert sync errore: {ex}", flush=True)
             try:
                 if get_conversions_used(_auth_email) >= FREE_CONVERSIONS_MAX:
                     if _get_user_plan(_auth_email) == "free":
@@ -1088,8 +1174,9 @@ async def analyze_start(request: Request, file: UploadFile = File(...), full_ana
         raise HTTPException(413, "File troppo grande")
     file_mb = len(content) / 1_000_000
 
-    # Incrementa verifiche_totali per abbonati (no-op se non in tabella)
+    # Incrementa verifiche_totali per abbonati (no-op se non in tabella) + log operazione
     authorization = request.headers.get("authorization", "")
+    _verify_email = None
     if authorization.startswith("Bearer "):
         from core.auth import get_email_by_token
         _verify_email = get_email_by_token(authorization[7:])
@@ -1098,6 +1185,11 @@ async def analyze_start(request: Request, file: UploadFile = File(...), full_ana
                 increment_verifica_abbonato(_verify_email)
             except Exception as ex:
                 print(f"[abbonati] increment_verifica errore: {ex}", flush=True)
+    try:
+        _v_plan = _get_user_plan(_verify_email) if _verify_email else "free"
+        _log_operazione(_verify_email, _v_plan, "verifica", request)
+    except Exception as ex:
+        print(f"[log_operazioni] analyze/start errore: {ex}", flush=True)
 
     uid = str(uuid.uuid4())
     tmp = str(TEMP_DIR / f"{uid}{ext}")
@@ -1314,6 +1406,91 @@ async def admin_log(last: int = 100, _: None = Depends(_check_admin)):
         },
         "events": events,
     })
+
+
+# ── Admin report log_operazioni ───────────────────────────────────────────────
+
+def _check_admin_token_header(request: Request):
+    """Verifica header X-Admin-Token contro env var ADMIN_TOKEN."""
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not expected:
+        raise HTTPException(503, "ADMIN_TOKEN non configurato sul server")
+    provided = request.headers.get("x-admin-token", "")
+    if provided != expected:
+        raise HTTPException(401, "Token admin non valido")
+
+@app.get("/admin/report")
+async def admin_report(request: Request):
+    """Report aggregato del log operazioni. Richiede header X-Admin-Token."""
+    _check_admin_token_header(request)
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            # Totali
+            tot_v = conn.execute("SELECT COUNT(*) FROM log_operazioni WHERE tipo='verifica'").fetchone()[0]
+            tot_c = conn.execute("SELECT COUNT(*) FROM log_operazioni WHERE tipo='conversione'").fetchone()[0]
+
+            # Per mese (YYYY-MM)
+            rows_mese = conn.execute("""
+                SELECT substr(timestamp, 1, 7) AS mese,
+                       SUM(CASE WHEN tipo='verifica' THEN 1 ELSE 0 END) AS verifiche,
+                       SUM(CASE WHEN tipo='conversione' THEN 1 ELSE 0 END) AS conversioni
+                FROM log_operazioni
+                WHERE timestamp IS NOT NULL AND timestamp != ''
+                GROUP BY mese
+                ORDER BY mese DESC
+            """).fetchall()
+            per_mese = [
+                {"mese": r[0], "verifiche": r[1], "conversioni": r[2]}
+                for r in rows_mese
+            ]
+
+            # Per piano
+            rows_piano = conn.execute("""
+                SELECT piano, COUNT(*) FROM log_operazioni GROUP BY piano
+            """).fetchall()
+            per_piano = {"free": 0, "pro_monthly": 0, "pro_annual": 0, "lifetime": 0}
+            for piano, cnt in rows_piano:
+                key = piano or "free"
+                per_piano[key] = per_piano.get(key, 0) + cnt
+        finally:
+            conn.close()
+
+    return JSONResponse({
+        "totale_verifiche":   tot_v,
+        "totale_conversioni": tot_c,
+        "per_mese":           per_mese,
+        "per_piano":          per_piano,
+    })
+
+@app.get("/admin/report/csv")
+async def admin_report_csv(request: Request):
+    """Esporta CSV completo del log_operazioni (no email in chiaro). Richiede X-Admin-Token."""
+    _check_admin_token_header(request)
+    import io, csv
+    from fastapi.responses import StreamingResponse
+    with _blacklist_lock:
+        conn = sqlite3.connect(_BLACKLIST_DB_PATH)
+        try:
+            rows = conn.execute("""
+                SELECT id, username, email_hash, piano, tipo, timestamp, ip_hash
+                FROM log_operazioni
+                ORDER BY id ASC
+            """).fetchall()
+        finally:
+            conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "username", "email_hash", "piano", "tipo", "timestamp", "ip_hash"])
+    for row in rows:
+        writer.writerow(row)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=rephase_log_operazioni.csv"},
+    )
 
 
 # ── Certification / Blockchain ─────────────────────────────────────────────
