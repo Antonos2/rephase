@@ -21,3 +21,5 @@ remotion/out/
 *.m4a
 *_certificate.json
 *_fft*.png
+rephase.db
+rephase_events.log
