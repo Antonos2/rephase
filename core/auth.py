@@ -70,6 +70,11 @@ def generate_otp(email: str) -> dict:
     # Genera codice 6 cifre
     code = f"{secrets.randbelow(1000000):06d}"
 
+    # DEV-mode: stampa OTP in chiaro sul terminale se in locale
+    _base_url = os.environ.get("BASE_URL", "")
+    if "localhost" in _base_url or "127.0.0.1" in _base_url:
+        print(f"[DEV] OTP per {email}: {code}", flush=True)
+
     # Salva
     with _otp_lock:
         _otp_store[email] = {
