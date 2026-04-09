@@ -13,6 +13,10 @@ nav { background: #d0d0d0; border-bottom: 0.5px solid #b8b8b8; padding: 0 32px; 
 .hero-title { font-size: 48px; font-weight: 700; letter-spacing: -2px; line-height: 1.05; margin-bottom: 16px; }
 .hero-sub { font-size: 17px; color: #333; margin-bottom: 16px; }
 .hero-slogan { font-size: 14px; color: #444; font-style: italic; }
+.privacy-bar { display: flex; justify-content: center; align-items: center; gap: 18px; padding: 12px 16px 24px; font-size: 12.5px; color: #666; flex-wrap: wrap; }
+.privacy-bar .pb-item { display: inline-flex; align-items: center; gap: 6px; }
+.privacy-bar .pb-sep { color: #c0c0c0; }
+@media (max-width: 480px) { .privacy-bar .pb-sep { display: none; } }
 .main { max-width: 960px; margin: 0 auto; padding: 0 24px 64px; }
 .pricing { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 @media (max-width: 760px) { .pricing { grid-template-columns: 1fr; } }
@@ -49,6 +53,12 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
   <div class="hero-title">Basta con<br>l'atto di fede</div>
   <div class="hero-sub">Verifica e converti i tuoi brani a 432 Hz.<br>Con misura reale, non con promesse.</div>
   <div class="hero-slogan">"Out of phase? Get <span style="font-weight:700;font-style:normal;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span>"</div>
+</div>
+
+<div class="privacy-bar">
+  <span class="pb-item">🔒 Server in Svizzera</span>
+  <span class="pb-sep">|</span>
+  <span class="pb-item">⏱ File cancellati entro 60 secondi</span>
 </div>
 
 <div class="main">
@@ -98,7 +108,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
 
 <footer>
   <div class="footer-logo">re<span>phase</span></div>
-  <div class="footer-text">Out of phase? Get <span style="font-weight:700;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span><br>Server in Svizzera. File cancellati entro 60 secondi.<br>© 2026 Rephase. Tutti i diritti riservati.</div>
+  <div class="footer-text">Out of phase? Get <span style="font-weight:700;color:#1a1a1a;">re<span style="color:#1e8c3a;">phase</span></span><br>© 2026 Rephase. Tutti i diritti riservati.</div>
   <div style="margin-top:12px;font-size:14px;"><a href="/termini" style="color:#34c759;font-weight:600;text-decoration:underline;">Termini e Condizioni</a> &middot; <a href="/privacy" style="color:#34c759;font-weight:600;text-decoration:underline;">Privacy Policy</a> &middot; <a href="mailto:support@getrephase.com" style="color:#34c759;font-weight:600;text-decoration:underline;">support@getrephase.com</a></div>
 </footer>
 </body>
