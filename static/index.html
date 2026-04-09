@@ -317,7 +317,7 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <button class="mode-btn" id="mode-btn-full" onclick="setAnalysisMode('full')" title="Ogni secondo del brano viene analizzato">Analisi precisa</button>
       </div>
       <input type="file" id="file-verify" accept=".mp3,.m4a,.wav,.flac,.aac,.aiff">
-      <div class="drop-area" id="drop-area-verify" onclick="if(typeof _isQuotaExhausted==='function' && _isQuotaExhausted()){_forceShowPricingAndScroll();return;}document.getElementById('file-verify').click()">
+      <div class="drop-area" id="drop-area-verify" onclick="document.getElementById('file-verify').click()">
         <div class="drop-title">Trascina il tuo file audio</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
@@ -451,12 +451,31 @@ footer { text-align: center; padding: 32px; border-top: 0.5px solid #c0c0c0; bac
         <div class="drop-title" id="convert-label">Trascina il file da convertire</div>
         <div class="drop-sub">MP3, M4A, WAV, FLAC — oppure <a>scegli dal computer</a></div>
       </div>
-      <div id="convert-blocked-msg" style="display:none;margin-top:14px;padding:14px;background:#fff5f5;border:1px solid #f5c6cb;border-radius:10px;text-align:center;">
-        <div style="color:#c0392b;font-weight:700;font-size:14px;margin-bottom:10px;">Hai esaurito le conversioni gratuite</div>
-        <div style="font-size:13px;color:#555;margin-bottom:12px;">Scegli Pro o Una Tantum per continuare</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
-          <a href="#" onclick="event.preventDefault();openSignupModal('pro');return false;" style="display:inline-block;background:#34c759;color:#1a1a1a;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;">Abbonati a Pro</a>
-          <a href="#" onclick="event.preventDefault();openSignupModal('lifetime');return false;" style="display:inline-block;background:transparent;color:#1a1a1a;border:1.5px solid #6c63ff;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;">Acquista Una Tantum</a>
+      <div id="convert-blocked-msg" style="display:none;margin-top:18px;">
+        <div style="text-align:center;padding:14px 0 18px;">
+          <div style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">Hai esaurito le 2 conversioni gratuite</div>
+          <div style="font-size:13px;color:#666;">Scegli un piano per continuare a convertire — la verifica resta gratuita</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+          <!-- Pro Mensile -->
+          <div style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;padding:14px 12px;text-align:center;">
+            <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Pro Mensile</div>
+            <div style="font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:10px;">CHF 4.95 <span style="font-size:11px;font-weight:400;color:#666;">/mese</span></div>
+            <button onclick="_exhaustedPickPro(false)" style="width:100%;background:#34c759;color:#1a1a1a;border:none;border-radius:6px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;">Abbonati</button>
+          </div>
+          <!-- Pro Annuale (più popolare) -->
+          <div style="background:#fff;border:2px solid #34c759;border-radius:10px;padding:14px 12px;text-align:center;position:relative;">
+            <div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#34c759;color:#1a1a1a;font-size:9px;font-weight:700;padding:3px 9px;border-radius:980px;letter-spacing:0.4px;">PIÙ POPOLARE</div>
+            <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Pro Annuale</div>
+            <div style="font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:10px;">CHF 49 <span style="font-size:11px;font-weight:400;color:#666;">/anno</span></div>
+            <button onclick="_exhaustedPickPro(true)" style="width:100%;background:#34c759;color:#1a1a1a;border:none;border-radius:6px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;">Abbonati</button>
+          </div>
+          <!-- Una Tantum -->
+          <div style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;padding:14px 12px;text-align:center;">
+            <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:4px;">Una Tantum</div>
+            <div style="font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:10px;">CHF 199 <span style="font-size:11px;font-weight:400;color:#666;">una volta</span></div>
+            <button onclick="openSignupModal('lifetime')" style="width:100%;background:#34c759;color:#1a1a1a;border:none;border-radius:6px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;">Acquista</button>
+          </div>
         </div>
       </div>
       <div style="font-size:11px;color:#666;margin:6px 2px 0;">Formati supportati: MP3 &middot; M4A &middot; WAV &middot; FLAC &middot; AAC &middot; AIFF</div>
@@ -1344,6 +1363,12 @@ async function authSendOtp() {
   }
 }
 
+// Apre la signup modal Pro pre-impostando il toggle Mensile/Annuale
+function _exhaustedPickPro(annual){
+  window._isPlanProAnnual = !!annual;
+  openSignupModal('pro');
+}
+
 // Aggiorna stato del tab Converti in base a free_exhausted
 // (utente loggato + plan=free + conversions_remaining=0 → blocca)
 function _updateConvertTabState(){
@@ -1896,20 +1921,20 @@ function _isQuotaExhausted(){
 
 ['drop-area-verify','drop-area-convert'].forEach(id=>{
   const el=document.getElementById(id);
+  const isConvert = (id === 'drop-area-convert');
   el.addEventListener('dragover',e=>{
     e.preventDefault();
-    if (_isQuotaExhausted()) return; // niente highlight se quota esaurita
+    // Tab Verifica: sempre libero. Tab Converti: blocca su quota esaurita.
+    if (isConvert && _isQuotaExhausted()) return;
     el.classList.add('drag-over');
   });
   el.addEventListener('dragleave',e=>{if(!el.contains(e.relatedTarget))el.classList.remove('drag-over');});
   el.addEventListener('drop',e=>{
     e.preventDefault();el.classList.remove('drag-over');
-    if (_isQuotaExhausted()) {
-      _forceShowPricingAndScroll();
-      return;
-    }
+    // Tab Converti bloccato per free esauriti → niente upload, mostra blocco prezzi
+    if (isConvert && _isQuotaExhausted()) return;
     const file=e.dataTransfer.files[0];if(!file)return;
-    const inputId=id==='drop-area-verify'?'file-verify':'file-convert';
+    const inputId=isConvert?'file-convert':'file-verify';
     const dt=new DataTransfer();dt.items.add(file);
     document.getElementById(inputId).files=dt.files;
     document.getElementById(inputId).dispatchEvent(new Event('change'));
