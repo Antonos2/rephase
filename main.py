@@ -150,7 +150,10 @@ _log_operazioni_init()
 
 def _log_operazione(email, piano, tipo, request=None):
     """Inserisce una riga in log_operazioni. email/ip vengono hashati (no PII).
-    Recupera username dalla tabella abbonati se l'email è nota."""
+    Recupera username dalla tabella abbonati se l'email è nota; se non esiste,
+    lo genera automaticamente via get_username_by_email() (crea placeholder
+    in abbonati con piano='free'). Per guest non autenticati, usa solo ip_hash
+    come identificatore anonimo."""
     try:
         email_norm = (email or "").strip().lower()
         # Hash email (primi 8 char SHA256) — pseudonimizzazione
@@ -165,20 +168,15 @@ def _log_operazione(email, piano, tipo, request=None):
             except Exception:
                 client_ip = ""
         ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest() if client_ip else None
-        # Lookup username (se utente è in abbonati)
+        # Lookup/ensure username per utenti autenticati.
+        # Se l'email è nota ma non c'è ancora riga in abbonati, get_username_by_email
+        # crea un placeholder (piano='free') così da garantire sempre uno username.
         username = None
         if email_norm:
-            with _blacklist_lock:
-                conn = sqlite3.connect(_BLACKLIST_DB_PATH)
-                try:
-                    row = conn.execute(
-                        "SELECT username FROM abbonati WHERE email = ? AND username IS NOT NULL LIMIT 1",
-                        (email_norm,)
-                    ).fetchone()
-                    if row:
-                        username = row[0]
-                finally:
-                    conn.close()
+            try:
+                username = get_username_by_email(email_norm)
+            except Exception as ex:
+                print(f"[log_operazioni] ensure-username errore: {type(ex).__name__}: {ex}", flush=True)
         ts = datetime.now(timezone.utc).isoformat()
         with _blacklist_lock:
             conn = sqlite3.connect(_BLACKLIST_DB_PATH)
