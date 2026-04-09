@@ -1759,21 +1759,68 @@ async def stripe_webhook(request: Request):
         session_obj = event["data"]["object"]
         customer_email = session_obj.get("customer_email") or session_obj.get("customer_details", {}).get("email")
         payment_status = session_obj.get("payment_status")
-        print(f"[webhook] checkout completato — email={customer_email} payment_status={payment_status}", flush=True)
-        if customer_email and payment_status == "paid":
-            _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | checkout.completed | email={customer_email}")
+        session_mode = session_obj.get("mode")
+        print(f"[webhook] checkout completato — email={customer_email} payment_status={payment_status} mode={session_mode}", flush=True)
+        # Per subscription Stripe mette payment_status='paid' o 'no_payment_required' (trial)
+        # Per payment (lifetime) mette payment_status='paid'
+        if customer_email and payment_status in ("paid", "no_payment_required"):
+            _vigile.info(f"{datetime.now(timezone.utc).isoformat()} | WEBHOOK | checkout.completed | email={customer_email} mode={session_mode}")
             # Sblocca dalla blacklist Free
             unmark_free_exhausted(customer_email)
-            # Lifetime: salva subito in tabella abbonati (no invoice ricorrente)
-            if session_obj.get("mode") == "payment":
+
+            # ── Lifetime: salva subito (no subscription, no invoice ricorrente) ──
+            if session_mode == "payment":
                 amount_total = (session_obj.get("amount_total") or 0) / 100
                 upsert_abbonato(
                     email=customer_email,
                     piano="lifetime",
-                    data_scadenza=None,  # accesso a vita
+                    data_scadenza=None,
                     importo_chf=amount_total,
                     stripe_event_id=event.get("id"),
                 )
+                print(f"[webhook] lifetime salvato per {customer_email}", flush=True)
+
+            # ── Subscription (Mensile/Annuale): retrieve immediato e upsert ──
+            # Non aspettare customer.subscription.created/updated o invoice.payment_succeeded:
+            # questi eventi possono arrivare dopo che l'utente è già tornato sul sito.
+            elif session_mode == "subscription":
+                try:
+                    sub_id = session_obj.get("subscription")
+                    if sub_id:
+                        stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+                        sub_obj = stripe.Subscription.retrieve(sub_id)
+                        price_id = ""
+                        try:
+                            price_id = sub_obj["items"]["data"][0]["price"]["id"]
+                        except (KeyError, IndexError, TypeError):
+                            pass
+                        price_annual = os.environ.get("STRIPE_PRICE_ANNUAL", "")
+                        piano = "pro_annual" if price_id == price_annual else "pro_monthly"
+                        # Scadenza: current_period_end (sub appena creata sempre presente)
+                        scadenza_iso = None
+                        try:
+                            scadenza_unix = sub_obj["current_period_end"]
+                            scadenza_iso = datetime.fromtimestamp(scadenza_unix, tz=timezone.utc).isoformat()
+                        except (KeyError, TypeError, ValueError):
+                            pass
+                        # Importo dal price.unit_amount
+                        importo = None
+                        try:
+                            importo = sub_obj["items"]["data"][0]["price"]["unit_amount"] / 100
+                        except (KeyError, IndexError, TypeError):
+                            pass
+                        upsert_abbonato(
+                            email=customer_email,
+                            piano=piano,
+                            data_scadenza=scadenza_iso,
+                            importo_chf=importo,
+                            stripe_event_id=event.get("id"),
+                        )
+                        print(f"[webhook] subscription {piano} salvata per {customer_email} sub_id={sub_id}", flush=True)
+                    else:
+                        print(f"[webhook] WARN checkout.completed mode=subscription ma sub_id mancante: email={customer_email}", flush=True)
+                except Exception as ex:
+                    print(f"[webhook] errore upsert subscription da checkout.completed: {type(ex).__name__}: {ex}", flush=True)
 
     elif event_type in ("customer.subscription.created", "customer.subscription.updated"):
         sub = event["data"]["object"]
@@ -1802,7 +1849,8 @@ async def stripe_webhook(request: Request):
                 importo = sub["items"]["data"][0]["price"]["unit_amount"] / 100
             except (KeyError, IndexError, TypeError):
                 pass
-            if sub_email and status == "active":
+            # Salva per stati 'attivi'. Esclude solo canceled/unpaid/incomplete_expired.
+            if sub_email and status in ("active", "trialing", "past_due"):
                 upsert_abbonato(
                     email=sub_email,
                     piano=piano,
@@ -1811,6 +1859,8 @@ async def stripe_webhook(request: Request):
                     stripe_event_id=event.get("id"),
                 )
                 unmark_free_exhausted(sub_email)
+            elif sub_email:
+                print(f"[webhook] sub.{event_type} skip status={status} (non attivo)", flush=True)
         except Exception as ex:
             print(f"[webhook] errore upsert abbonato (sub.{event_type}): {type(ex).__name__}: {ex}", flush=True)
 
