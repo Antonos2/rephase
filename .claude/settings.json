@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "sh -c 'if echo \"$TOOL_INPUT\" | grep -q \"CLAUDE.md\"; then echo \"[REPHASE-MCP] CLAUDE.md aggiornato — tutti gli agenti riceveranno lo stato aggiornato alla prossima lettura\"; fi'"
+      }
+    ]
+  }
+}
