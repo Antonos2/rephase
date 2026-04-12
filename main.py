@@ -12,8 +12,45 @@ from collections import deque
 from datetime import datetime, timezone
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Depends, Header, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from core.converter import convert_to_432, analyze_file
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🚧 COMING SOON — middleware che blocca le pagine HTML pubbliche
+# ══════════════════════════════════════════════════════════════════════════════
+_COMING_SOON_ROUTES = frozenset({"/", "/app", "/privacy", "/privacy/en", "/terms", "/terms/en", "/admin"})
+
+_COMING_SOON_HTML = """<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rephase — Coming Soon</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#0a0a0a;color:#fff;font-family:system-ui,sans-serif;text-align:center}
+  .wrap{max-width:420px;padding:40px 24px}
+  .logo{font-size:32px;font-weight:800;letter-spacing:.06em;margin-bottom:16px}
+  .logo span{color:#34c759}
+  .sub{font-size:18px;color:rgba(255,255,255,.7);line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">re<span>phase</span></div>
+  <div class="sub">Stiamo per arrivare</div>
+</div>
+</body>
+</html>"""
+
+
+class ComingSoonMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.method == "GET" and request.url.path in _COMING_SOON_ROUTES:
+            return HTMLResponse(content=_COMING_SOON_HTML, status_code=200)
+        return await call_next(request)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🚦 VIGILE URBANO — logger interno Rephase
@@ -462,6 +499,7 @@ _log_tool("ffmpeg")
 
 app = FastAPI(title="Rephase API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(ComingSoonMiddleware)
 
 TEMP_DIR = Path("/tmp/rephase")
 TEMP_DIR.mkdir(exist_ok=True)
